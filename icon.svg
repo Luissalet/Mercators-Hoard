@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">Mercator's Hoard</title>
+  <rect width="128" height="128" rx="24" fill="#101b20"/>
+  <circle cx="64" cy="64" r="43" fill="none" stroke="#72d2b3" stroke-width="3"/>
+  <path d="M64 16v11M64 101v11M16 64h11M101 64h11" stroke="#72d2b3" stroke-width="3" stroke-linecap="round"/>
+  <path d="m39 83 9-39 16 26 16-26 9 39" fill="none" stroke="#e8eae6" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="64" cy="64" r="3" fill="#efbd72"/>
+</svg>
