@@ -1,4 +1,8 @@
 import tempfile
+import json
+import os
+import subprocess
+import sys
 import threading
 import unittest
 from contextlib import closing
@@ -88,6 +92,52 @@ class DashboardTests(unittest.TestCase):
                 response = conn.getresponse()
                 response.read()
                 self.assertEqual(response.status, expected)
+
+    def test_catalog_and_sales_queries_are_paged_and_currency_separated(self):
+        root = Path(self.temp.name) / "products"
+        root.mkdir()
+        for name, tags in (("Tagged", ["pokemon", "figure"]), ("Untagged", [])):
+            folder = root / name
+            folder.mkdir()
+            (folder / "cults3d.json").write_text(json.dumps({"title": name, "tags": tags}), encoding="utf-8")
+        (root / "Pending").mkdir()
+        with patch.object(mercator, "secrets", return_value={"MERCATOR_PRODUCTS_DIR": str(root)}):
+            self.assertEqual(mercator.catalog_query(untagged=True)["items"][0]["id"], "Untagged")
+            self.assertEqual(mercator.catalog_query(missing=True)["items"][0]["id"], "Pending")
+            self.assertEqual(mercator.catalog_query(offset=1, limit=1)["total"], 3)
+        mercator.import_sales("date,product,amount,currency\n2026-09-28,Tagged,12.50,EUR\n2026-09-28,Tagged,9.00,USD\n",
+                              {"date": "date", "product": "product", "amount": "amount", "currency": "currency"})
+        result = mercator.sales_query("Tagged", limit=1)
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(len(result["sales"]), 1)
+        self.assertEqual(result["by_currency"], [{"currency": "EUR", "income": "12.50"}, {"currency": "USD", "income": "9.00"}])
+
+    def test_mcp_stdio_reads_isolated_catalog_without_modifying_it(self):
+        root = Path(self.temp.name) / "products"
+        folder = root / "Modelo á"
+        folder.mkdir(parents=True)
+        listing = folder / "cults3d.json"
+        listing.write_text(json.dumps({"title": "Modelo á", "tags": []}), encoding="utf-8")
+        before = listing.read_bytes()
+        script = Path(mercator.__file__).with_name("mcp_server.py")
+        requests = [
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-03-26"}},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "mercator_catalog", "arguments": {"untagged": True}}},
+            {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "mercator_sales", "arguments": {}}},
+        ]
+        child = subprocess.run([sys.executable, str(script)], input="".join(json.dumps(row) + "\n" for row in requests),
+                               text=True, encoding="utf-8", capture_output=True, timeout=10,
+                               env={**os.environ, "PYTHONIOENCODING": "cp1252", "MERCATOR_DATA_DIR": self.temp.name, "MERCATOR_PRODUCTS_DIR": str(root)})
+        self.assertEqual(child.returncode, 0, child.stderr)
+        replies = [json.loads(line) for line in child.stdout.splitlines()]
+        self.assertEqual(replies[0]["result"]["serverInfo"]["name"], "mercator-hoard")
+        self.assertEqual(replies[1]["result"]["tools"][0]["annotations"]["readOnlyHint"], True)
+        self.assertIn("cuáles", replies[1]["result"]["tools"][0]["description"])
+        self.assertEqual(json.loads(replies[2]["result"]["content"][0]["text"])["items"][0]["tags"], 0)
+        self.assertEqual(json.loads(replies[2]["result"]["content"][0]["text"])["items"][0]["id"], "Modelo á")
+        self.assertEqual(json.loads(replies[3]["result"]["content"][0]["text"])["total"], 0)
+        self.assertEqual(listing.read_bytes(), before)
 
 
 if __name__ == "__main__":

@@ -26,6 +26,10 @@ Los ingresos se muestran por moneda, sin sumar monedas diferentes ni asumir que 
 
 Lee, sin modificar, las subcarpetas de `Desktop/Modelos/Contornos pokemon` y detecta cuáles tienen `cults3d.json`. Puedes cambiar la ubicación con `MERCATOR_PRODUCTS_DIR` en `.env`.
 
+## Consultar desde Faustus
+
+`python mcp_server.py` ofrece dos herramientas MCP locales de solo lectura sin arrancar el panel: `mercator_catalog` busca fichas y filtra las que no tienen etiquetas o tienen archivos pendientes/dañados; `mercator_sales` consulta ventas importadas por producto y separa los totales por moneda. Hoard Hub puede usar la entrada MCP de `faustus-plugin.json`. `MERCATOR_DATA_DIR` y `MERCATOR_PRODUCTS_DIR` permiten seleccionar datos locales distintos para pruebas aisladas.
+
 ## Verificar
 
 `python -m unittest discover -s tests` comprueba importación, límites de acceso y comportamiento de la lectura. El servidor está limitado a `127.0.0.1`; no lo expongas a la red con claves de servidor cargadas.

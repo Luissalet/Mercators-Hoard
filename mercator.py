@@ -19,7 +19,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent
-DATA = ROOT / "data"
+DATA = Path(os.environ.get("MERCATOR_DATA_DIR") or ROOT / "data")
 DB = DATA / "mercator.sqlite3"
 PROJECTS = {
     "watchhoard": {
@@ -53,7 +53,7 @@ def secrets() -> dict[str, str]:
 
 
 def db() -> sqlite3.Connection:
-    DATA.mkdir(exist_ok=True)
+    DATA.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB)
     conn.row_factory = sqlite3.Row
     conn.executescript("""
@@ -291,15 +291,49 @@ def products() -> dict:
             try:
                 content = json.loads(listing.read_text(encoding="utf-8-sig"))
                 if isinstance(content, dict):
+                    tags = content.get("tags") or []
                     entry.update({"title": str(content.get("title") or folder.name),
-                                  "has_listing": True, "tags": len(content.get("tags") or []),
+                                  "has_listing": True, "tags": len(tags) if isinstance(tags, list) else 0,
                                   "updated_at": datetime.fromtimestamp(listing.stat().st_mtime, timezone.utc).isoformat()})
+                    if not isinstance(tags, list):
+                        entry["invalid_listing"] = True
             except (OSError, ValueError):
                 entry["invalid_listing"] = True
         items.append(entry)
     items.sort(key=lambda item: item["id"])
     return {"state": "ok", "count": len(items),
             "with_listing": sum(1 for item in items if item["has_listing"]), "items": items}
+
+
+def catalog_query(query: str = "", untagged: bool = False, missing: bool = False,
+                  offset: int = 0, limit: int = 25) -> dict:
+    if not isinstance(query, str) or not isinstance(untagged, bool) or not isinstance(missing, bool):
+        raise ValueError("Filtros no válidos")
+    if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0 or not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100:
+        raise ValueError("offset o limit no válidos")
+    catalog = products()
+    matches = [item for item in catalog["items"] if
+               (not query or query.casefold() in item["title"].casefold() or query.casefold() in item["id"].casefold()) and
+               (not untagged or item["has_listing"] and item["tags"] == 0) and
+               (not missing or not item["has_listing"] or item.get("invalid_listing"))]
+    return {"state": catalog["state"], "total": len(matches), "offset": offset,
+            "items": matches[offset:offset + limit]}
+
+
+def sales_query(product: str = "", limit: int = 20) -> dict:
+    if not isinstance(product, str) or not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100:
+        raise ValueError("Consulta de ventas no válida")
+    if not DB.is_file():
+        return {"total": 0, "by_currency": [], "sales": []}
+    with closing(sqlite3.connect(DB.as_uri() + "?mode=ro", uri=True)) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = [dict(row) for row in conn.execute("SELECT sold_at, product, amount, currency FROM sales ORDER BY sold_at DESC")]
+    matches = [row for row in rows if product.casefold() in row["product"].casefold()]
+    totals: dict[str, Decimal] = {}
+    for row in matches:
+        totals[row["currency"]] = totals.get(row["currency"], Decimal("0")) + Decimal(row["amount"])
+    return {"total": len(matches), "by_currency": [{"currency": key, "income": str(value)} for key, value in sorted(totals.items())],
+            "sales": matches[:limit]}
 
 
 def summary() -> dict:
