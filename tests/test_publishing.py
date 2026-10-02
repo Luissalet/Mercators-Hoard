@@ -1,8 +1,6 @@
 import json
 import os
 import sqlite3
-import subprocess
-import sys
 import tempfile
 import threading
 import unittest

@@ -1,8 +1,6 @@
 import tempfile
 import json
 import os
-import subprocess
-import sys
 import threading
 import unittest
 from contextlib import closing
