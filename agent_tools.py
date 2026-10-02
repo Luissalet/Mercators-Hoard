@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-from contextlib import closing
 from typing import Any, Callable
 
 import cults_catalog
@@ -58,19 +57,21 @@ def _after_write(post: dict, previous: dict | None) -> None:
         mercator_family.link_ref(post["ref"], post["media_ref"], "publishes", from_label=post["title"][:80])
 
 
-def _store(fn: Callable[[Any], Any]) -> Any:
-    with closing(publishing.connect()) as conn, conn:
+def _store(fn: Callable[[Any], Any], *, write: bool = True) -> Any:
+    """Run ``fn(conn)`` on the store: in one transaction (committed, or rolled back when it raises) or, for a read, under its lock."""
+    import mercator
+    with (mercator.session() if write else mercator.reading()) as conn:
         return fn(conn)
 
 
 def posts_list(args: dict) -> dict:
     return _store(lambda c: publishing.list_posts(
         c, args.get("status") or "", args.get("platform") or "", args.get("from") or "", args.get("to") or "",
-        args.get("q") or "", args.get("limit", 50), args.get("offset", 0)))
+        args.get("q") or "", args.get("limit", 50), args.get("offset", 0)), write=False)
 
 
 def post_get(args: dict) -> dict:
-    return _store(lambda c: {"post": publishing.get_post(c, args.get("post_id"))})
+    return _store(lambda c: {"post": publishing.get_post(c, args.get("post_id"))}, write=False)
 
 
 def post_upsert(args: dict) -> dict:
@@ -108,7 +109,7 @@ def post_metrics_add(args: dict) -> dict:
 
 
 def posts_stats(args: dict) -> dict:
-    return {"ok": True, **_store(lambda c: publishing.stats(c, args.get("platform") or ""))}
+    return {"ok": True, **_store(lambda c: publishing.stats(c, args.get("platform") or ""), write=False)}
 
 
 def post_draft_from_media(args: dict) -> dict:
@@ -185,7 +186,7 @@ def post_caption_suggest(args: dict) -> dict:
         if args.get("post_id"):
             return publishing.get_post(conn, args["post_id"], metrics=False)
         return None
-    post = _store(read)
+    post = _store(read, write=False)
     platform = args.get("platform") or (post["platform"] if post else publishing.DEFAULT_PLATFORM)
     if platform not in publishing.PLATFORMS:
         raise ValueError("platform no válida: " + ", ".join(publishing.PLATFORMS))

@@ -23,7 +23,8 @@ class DashboardTests(unittest.TestCase):
         patcher_db = patch.object(mercator, "DB", data / "mercator.sqlite3")
         patcher_data.start(); patcher_db.start()
         self.addCleanup(patcher_data.stop); self.addCleanup(patcher_db.stop)
-        mercator.db().close()
+        mercator.database()
+        self.addCleanup(mercator.close_databases)
 
     def test_sales_import_is_idempotent_and_uses_decimal_comma(self):
         source = "sale,date,product,income,currency\nA,28/09/2026,Model A,12,50,EUR\n"
@@ -50,7 +51,8 @@ class DashboardTests(unittest.TestCase):
                   "public_env": Path(self.temp.name) / "public.env"}
         config["env"].write_text("EXPO_PUBLIC_SUPABASE_URL=https://example.supabase.co\n"
                                  "EXPO_PUBLIC_SUPABASE_ANON_KEY=public\n", encoding="utf-8")
-        with closing(mercator.db()) as conn, conn, patch.object(mercator, "secrets", return_value={}):
+        conn = mercator.database()
+        with patch.object(mercator, "secrets", return_value={}):
             mercator.supabase_users(conn, "bookhoard", config)
         self.assertEqual(mercator.summary()["statuses"][0]["state"], "needs_access")
         self.assertEqual(mercator.summary()["metrics"], [])
@@ -59,13 +61,15 @@ class DashboardTests(unittest.TestCase):
         config = {"env": Path(self.temp.name) / "server.env"}
         config["env"].write_text("SUPABASE_URL=https://example.supabase.co\n"
                                  "SUPABASE_SERVICE_ROLE_KEY=private\n", encoding="utf-8")
-        with closing(mercator.db()) as conn, conn, patch.object(mercator, "request_json", side_effect=TimeoutError()):
+        conn = mercator.database()
+        with patch.object(mercator, "request_json", side_effect=TimeoutError()):
             mercator.supabase_users(conn, "watchhoard", config)
         self.assertEqual(mercator.summary()["statuses"][0]["state"], "error")
         self.assertEqual(mercator.summary()["metrics"], [])
 
     def test_cloudflare_rejects_unexpected_multiple_aggregates(self):
-        with closing(mercator.db()) as conn, conn, patch.object(mercator, "secrets", return_value={
+        conn = mercator.database()
+        with patch.object(mercator, "secrets", return_value={
             "CLOUDFLARE_API_TOKEN": "x", "CLOUDFLARE_ACCOUNT_ID": "account",
         }), patch.object(mercator, "request_json", return_value={
             "data": {"viewer": {"accounts": [{"workersInvocationsAdaptive":

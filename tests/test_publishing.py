@@ -42,7 +42,8 @@ class Base(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
         self.token_file = mercator_family.configure(self.data)
-        mercator.db().close()
+        mercator.database()
+        self.addCleanup(mercator.close_databases)
 
     def call(self, name, **args):
         return agent_tools.call_tool(name, args)
@@ -123,7 +124,7 @@ class PostsTests(Base):
         self.call("post_upsert", platform="tiktok", title="En rango", status="scheduled", scheduled_at="2026-10-05T18:30")
         self.call("post_upsert", platform="tiktok", title="Fuera", status="scheduled", scheduled_at="2026-12-05T18:30")
         self.call("post_upsert", platform="tiktok", title="Borrador", status="draft", scheduled_at="2026-10-06T18:30")
-        with closing(mercator.db()) as conn:
+        with mercator.reading() as conn:
             items = publishing.agenda_items(conn, date(2026, 10, 1), date(2026, 10, 31), "http://127.0.0.1:5195")
         self.assertEqual([i["title"] for i in items], ["Publicar: En rango (TikTok)"])
         self.assertEqual((items[0]["kind"], items[0]["id"]), ("publish", "mercator:publish:1"))
@@ -135,7 +136,7 @@ class PostsTests(Base):
     def test_overdue_scheduled_post_is_high_priority(self):
         past = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M")
         self.call("post_upsert", platform="x", title="Tarde", status="scheduled", scheduled_at=past)
-        with closing(mercator.db()) as conn:
+        with mercator.reading() as conn:
             items = publishing.agenda_items(conn, date.today() - timedelta(days=7), date.today(), "http://x")
         self.assertEqual(items[0]["priority"], "high")
 
@@ -222,14 +223,14 @@ class CsvTests(Base):
         text = "Contenido;Título del vídeo;Hora de publicación del vídeo;Visualizaciones;Me gusta\nq1;Mi vídeo;5 sept 2026;1.234;50\n"
         preview = post_csv.preview(text)
         self.assertEqual((preview["preset"], preview["delimiter"]), ("youtube_studio", ";"))
-        with closing(mercator.db()) as conn, conn:
+        with mercator.session() as conn:
             result = post_csv.import_rows(conn, text, "youtube", preview["mapping"])
         self.assertEqual((result["created"], result["snapshots"]), (1, 1))
         post = self.call("posts_list")["posts"][0]
         self.assertEqual((post["published_at"], post["metrics_latest"]["views"], post["external_id"]), ("2026-09-05", 1234, "q1"))
 
     def run_import(self, text, platform):
-        with closing(mercator.db()) as conn, conn:
+        with mercator.session() as conn:
             return post_csv.import_rows(conn, text, platform, post_csv.preview(text, platform)["mapping"])
 
     def test_youtube_import_creates_posts_skips_total_and_is_idempotent(self):
@@ -261,7 +262,7 @@ class CsvTests(Base):
         self.assertEqual(self.call("posts_list", platform="tiktok")["posts"][0]["metrics_latest"]["views"], 900)
 
     def test_bad_input_is_reported(self):
-        with closing(mercator.db()) as conn, conn:
+        with mercator.session() as conn:
             for text, platform, mapping in (("", "youtube", {}), (YT, "myspace", {"title": "Video title"}), (YT, "youtube", {}),
                                             (YT, "youtube", {"title": "Nope"}), (YT, "youtube", "x")):
                 with self.assertRaises(ValueError, msg=(platform, mapping)):
@@ -318,7 +319,7 @@ class SalesBatchTests(Base):
                                "CREATE TABLE sales_imports (imported_at TEXT NOT NULL, file_hash TEXT NOT NULL, rows INTEGER NOT NULL, added INTEGER NOT NULL);"
                                "INSERT INTO sales VALUES ('f1','2026-01-01','Old','1.00','EUR','cults-csv');")
         with patch.object(mercator, "DATA", old), patch.object(mercator, "DB", db):
-            mercator.db().close()
+            mercator.database()
             result = mercator.import_sales_batch(self.CSV, SALES_COLUMNS)
             self.assertEqual(result["added"], 2)
             self.assertEqual(mercator.summary()["sales_count"], 3)

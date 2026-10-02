@@ -1,8 +1,8 @@
 """Publicación: the posts store, metrics snapshots and statistics.
 
 Pure functions over a SQLite connection (``conn``), so the HTTP handler, the agent tools and the tests all
-use the same code. ``connect()`` late-imports ``mercator`` for its ``db()``; nothing here imports the server
-at import time.
+use the same code. Nothing here imports the server. Amounts and calendar days are read with the family's ``money`` and
+``dates`` (``hoard_link``).
 """
 
 from __future__ import annotations
@@ -53,11 +53,6 @@ CREATE TABLE IF NOT EXISTS post_metrics (
 CREATE INDEX IF NOT EXISTS post_metrics_post ON post_metrics(post_id, ts);
 CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
-
-
-def connect():
-    import mercator
-    return mercator.db()
 
 
 def now_utc() -> str:

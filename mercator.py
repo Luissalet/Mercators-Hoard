@@ -8,20 +8,22 @@ import io
 import json
 import os
 import re
+import signal
 import sqlite3
+import sys
 import threading
 import time
 import urllib.error
 import urllib.request
-from contextlib import closing
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Iterator
 from urllib.parse import parse_qs, urlsplit
 
 if __name__ == "__main__":  # modules that ``import mercator`` must get this running copy, not a second one
-    import sys
     sys.modules.setdefault("mercator", sys.modules["__main__"])
 
 import cults_catalog
@@ -29,6 +31,7 @@ import mercator_family
 import post_csv
 import publishing
 from hoard_link import money as hl_money
+from hoard_link.sqlkit import Database
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get("MERCATOR_DATA_DIR") or ROOT / "data")
@@ -64,49 +67,88 @@ def secrets() -> dict[str, str]:
     return {**env_file(ROOT / ".env"), **os.environ}
 
 
-def db() -> sqlite3.Connection:
-    DATA.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB)
-    conn.row_factory = sqlite3.Row
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS metrics (
-            project TEXT NOT NULL, source TEXT NOT NULL, metric TEXT NOT NULL,
-            value REAL NOT NULL, observed_at TEXT NOT NULL,
-            PRIMARY KEY (project, source, metric, observed_at)
-        );
-        CREATE TABLE IF NOT EXISTS source_status (
-            project TEXT NOT NULL, source TEXT NOT NULL, state TEXT NOT NULL,
-            detail TEXT NOT NULL, checked_at TEXT NOT NULL,
-            PRIMARY KEY (project, source)
-        );
-        CREATE TABLE IF NOT EXISTS sales (
-            fingerprint TEXT PRIMARY KEY, sold_at TEXT NOT NULL,
-            product TEXT NOT NULL, amount TEXT NOT NULL, currency TEXT NOT NULL,
-            source TEXT NOT NULL DEFAULT 'cults-csv'
-        );
-        CREATE TABLE IF NOT EXISTS sales_imports (
-            imported_at TEXT NOT NULL, file_hash TEXT NOT NULL,
-            rows INTEGER NOT NULL, added INTEGER NOT NULL
-        );
-    """)
-    conn.executescript(publishing.SCHEMA + cults_catalog.SCHEMA)
+CORE_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS metrics (
+        project TEXT NOT NULL, source TEXT NOT NULL, metric TEXT NOT NULL,
+        value REAL NOT NULL, observed_at TEXT NOT NULL,
+        PRIMARY KEY (project, source, metric, observed_at)
+    );
+    CREATE TABLE IF NOT EXISTS source_status (
+        project TEXT NOT NULL, source TEXT NOT NULL, state TEXT NOT NULL,
+        detail TEXT NOT NULL, checked_at TEXT NOT NULL,
+        PRIMARY KEY (project, source)
+    );
+    CREATE TABLE IF NOT EXISTS sales (
+        fingerprint TEXT PRIMARY KEY, sold_at TEXT NOT NULL,
+        product TEXT NOT NULL, amount TEXT NOT NULL, currency TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT 'cults-csv'
+    );
+    CREATE TABLE IF NOT EXISTS sales_imports (
+        imported_at TEXT NOT NULL, file_hash TEXT NOT NULL,
+        rows INTEGER NOT NULL, added INTEGER NOT NULL
+    );
+"""
+
+
+def _add_batch_columns(conn: sqlite3.Connection) -> None:
     for table in ("sales", "sales_imports"):  # stores created before batches existed
         if "batch" not in {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN batch TEXT")
-    return conn
+
+
+# Every step is idempotent (``IF NOT EXISTS``, a column added only when missing), so a store created by an older version, which
+# has no ``schema_version`` table, simply runs both and ends at version 2.
+MIGRATIONS = [CORE_SCHEMA + publishing.SCHEMA + cults_catalog.SCHEMA, _add_batch_columns]
+
+_databases: dict[str, Database] = {}
+_databases_lock = threading.Lock()
+
+
+def database() -> Database:
+    """The store of ``DB``: one connection shared by every thread behind one lock (WAL, a 15 s busy timeout, versioned migrations)."""
+    key = str(DB)
+    with _databases_lock:
+        found = _databases.get(key)
+        if found is None or found.closed:
+            found = _databases[key] = Database(DB, migrations=MIGRATIONS)
+        return found
+
+
+def close_databases() -> None:
+    """Close every open store (checkpoints the WAL). The server calls it when it stops; tests call it before deleting their folder."""
+    with _databases_lock:
+        opened = list(_databases.values())
+        _databases.clear()
+    for found in opened:
+        found.close()
+
+
+@contextmanager
+def session() -> Iterator[sqlite3.Connection]:
+    """A write transaction on the store: committed when the block ends, rolled back when it raises."""
+    with database().tx() as conn:
+        yield conn
+
+
+@contextmanager
+def reading() -> Iterator[sqlite3.Connection]:
+    """The store's connection for reading several tables consistently (no other thread writes while the block runs)."""
+    found = database()
+    with found.lock:
+        yield found.conn
 
 
 def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
 
-def status(conn: sqlite3.Connection, project: str, source: str, state: str, detail: str) -> None:
+def status(conn: sqlite3.Connection | Database, project: str, source: str, state: str, detail: str) -> None:
     conn.execute("INSERT INTO source_status VALUES (?,?,?,?,?) ON CONFLICT(project,source) DO UPDATE SET "
                  "state=excluded.state, detail=excluded.detail, checked_at=excluded.checked_at",
                  (project, source, state, detail[:240], utcnow()))
 
 
-def metric(conn: sqlite3.Connection, project: str, source: str, name: str, value: int | float) -> None:
+def metric(conn: sqlite3.Connection | Database, project: str, source: str, name: str, value: int | float) -> None:
     conn.execute("INSERT INTO metrics VALUES (?,?,?,?,?)",
                  (project, source, name, value, utcnow()))
 
@@ -123,7 +165,7 @@ def request_json(url: str, headers: dict[str, str], body: dict | None = None) ->
     return result
 
 
-def supabase_users(conn: sqlite3.Connection, project: str, config: dict) -> None:
+def supabase_users(conn: sqlite3.Connection | Database, project: str, config: dict) -> None:
     local = {**env_file(config.get("public_env", config["env"])), **env_file(config["env"])}
     url = local.get("SUPABASE_URL") or local.get("EXPO_PUBLIC_SUPABASE_URL")
     key = (secrets().get(f"{project.upper()}_SUPABASE_SERVICE_ROLE_KEY")
@@ -174,7 +216,7 @@ CF_QUERY = """query($account: string, $script: string, $start: string, $end: str
 }"""
 
 
-def cloudflare_worker(conn: sqlite3.Connection, project: str, config: dict) -> None:
+def cloudflare_worker(conn: sqlite3.Connection | Database, project: str, config: dict) -> None:
     env = secrets()
     prefix = project.upper()
     token = env.get(f"{prefix}_CLOUDFLARE_API_TOKEN") or env.get("CLOUDFLARE_API_TOKEN")
@@ -214,10 +256,10 @@ def _safe_error(exc: Exception) -> str:
 
 def refresh() -> dict:
     with _refresh_lock:
-        with closing(db()) as conn, conn:
-            for project, config in PROJECTS.items():
-                supabase_users(conn, project, config)
-                cloudflare_worker(conn, project, config)
+        store = database()      # one statement at a time: a slow provider never holds the store while the dashboard is being read
+        for project, config in PROJECTS.items():
+            supabase_users(store, project, config)
+            cloudflare_worker(store, project, config)
     return summary()
 
 
@@ -271,7 +313,7 @@ def import_sales_batch(text: str, columns: dict[str, str]) -> dict:
         parsed.append((fingerprint, sold_at, product, amount, currency))
     file_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
     batch = "imp-" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f") + "-" + file_hash[:6]
-    with closing(db()) as conn, conn:
+    with session() as conn:
         before = conn.total_changes
         conn.executemany("INSERT OR IGNORE INTO sales(fingerprint,sold_at,product,amount,currency,batch) VALUES (?,?,?,?,?,?)",
                          [(*row, batch) for row in parsed])
@@ -287,7 +329,7 @@ def sales_batch(batch: str) -> dict:
     """The sales lines one import added, in file order, for apps that book them (``line`` is 1-based and stable)."""
     if not isinstance(batch, str) or not batch.strip():
         raise ValueError("batch no válido")
-    with closing(db()) as conn, conn:
+    with reading() as conn:
         meta = conn.execute("SELECT imported_at, rows, added FROM sales_imports WHERE batch=? ORDER BY imported_at LIMIT 1",
                             (batch.strip(),)).fetchone()
         if meta is None:
@@ -373,8 +415,7 @@ def sales_query(product: str = "", limit: int = 20) -> dict:
         raise ValueError("Consulta de ventas no válida")
     if not DB.is_file():
         return {"total": 0, "by_currency": [], "sales": []}
-    with closing(sqlite3.connect(DB.as_uri() + "?mode=ro", uri=True)) as conn:
-        conn.row_factory = sqlite3.Row
+    with reading() as conn:
         rows = [dict(row) for row in conn.execute("SELECT sold_at, product, amount, currency FROM sales ORDER BY sold_at DESC")]
     matches = [row for row in rows if product.casefold() in row["product"].casefold()]
     totals: dict[str, Decimal] = {}
@@ -385,7 +426,7 @@ def sales_query(product: str = "", limit: int = 20) -> dict:
 
 
 def summary() -> dict:
-    with closing(db()) as conn, conn:
+    with reading() as conn:
         states = [dict(row) for row in conn.execute("SELECT * FROM source_status ORDER BY project,source")]
         metrics = [dict(row) for row in conn.execute("""
             SELECT m.* FROM metrics m JOIN (
@@ -449,7 +490,7 @@ def base_url() -> str:
 
 def agenda_provider(date_from, date_to, sphere):
     """Scheduled posts for the family agenda."""
-    with closing(db()) as conn, conn:
+    with reading() as conn:
         return publishing.agenda_items(conn, date_from, date_to, base_url())
 
 
@@ -460,7 +501,7 @@ def publishing_meta() -> dict:
 
 def post_media_file(post_id: int) -> tuple[Path, str] | None:
     """The image or video a post's ``media_ref`` points to, when it is an absolute local file of a servable type."""
-    with closing(db()) as conn, conn:
+    with reading() as conn:
         post = publishing.get_post(conn, post_id, metrics=False)
     ref = post["media_ref"]
     if not ref or ref.startswith("hoard://"):
@@ -556,20 +597,23 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/publishing/meta":
                 self._json(200, publishing_meta())
             elif path == "/api/posts":
-                with closing(db()) as conn, conn:
-                    self._json(200, publishing.list_posts(conn, query.get("status", ""), query.get("platform", ""), query.get("from", ""),
-                                                          query.get("to", ""), query.get("q", ""), int(query.get("limit", 500)),
-                                                          int(query.get("offset", 0))))
+                with reading() as conn:
+                    listing = publishing.list_posts(conn, query.get("status", ""), query.get("platform", ""), query.get("from", ""),
+                                                    query.get("to", ""), query.get("q", ""), int(query.get("limit", 500)),
+                                                    int(query.get("offset", 0)))
+                self._json(200, listing)
             elif path == "/api/posts/stats":
-                with closing(db()) as conn, conn:
-                    self._json(200, publishing.stats(conn, query.get("platform", "")))
+                with reading() as conn:
+                    totals = publishing.stats(conn, query.get("platform", ""))
+                self._json(200, totals)
             elif re.fullmatch(r"/api/posts/\d+(/media)?", path):
                 post_id = int(path.split("/")[3])
                 if path.endswith("/media"):
                     self._serve_media(post_id)
                 else:
-                    with closing(db()) as conn, conn:
-                        self._json(200, {"post": publishing.get_post(conn, post_id)})
+                    with reading() as conn:
+                        post = publishing.get_post(conn, post_id)
+                    self._json(200, {"post": post})
             elif path == "/api/agent/tools":
                 import agent_tools
                 self._json(200, {"instructions": agent_tools.INSTRUCTIONS, "tools": agent_tools.tool_catalog()})
@@ -638,7 +682,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/posts":
                 result = agent_tools.call_tool("post_upsert", body)
             elif path == "/api/posts/delete":
-                with closing(db()) as conn, conn:
+                with session() as conn:
                     result = {"ok": True, "deleted": publishing.delete_post(conn, body.get("post_id"))["id"]}
             elif path == "/api/posts/schedule":
                 result = agent_tools.call_tool("post_schedule", body)
@@ -649,7 +693,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/posts/import/preview":
                 result = {"ok": True, **post_csv.preview(body.get("csv", ""), body.get("platform", ""))}
             elif path == "/api/posts/import":
-                with closing(db()) as conn, conn:
+                with session() as conn:
                     result = {"ok": True, **post_csv.import_rows(conn, body.get("csv", ""), body.get("platform", ""), body.get("mapping", {}))}
             elif path == "/api/posts/caption":
                 result = agent_tools.call_tool("post_caption_suggest", body)
@@ -666,17 +710,21 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     port = int(os.environ.get("MERCATOR_PORT", "5195"))
-    db().close()
+    database()
     mercator_family.configure(DATA)
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     stop = threading.Event()
     threading.Thread(target=background_refresh, args=(stop,), daemon=True).start()
     print(f"Mercator's Hoard: http://127.0.0.1:{port}")
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))      # a stop request closes the store like Ctrl+C does
     try:
         server.serve_forever()
+    except (KeyboardInterrupt, SystemExit):
+        pass
     finally:
         stop.set()
         server.server_close()
+        close_databases()
 
 
 if __name__ == "__main__":
