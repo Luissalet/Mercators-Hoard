@@ -18,7 +18,7 @@ Cloudflare requiere un token con permiso de lectura de Analytics para la cuenta 
 
 ## Ventas de Cults
 
-Exporta un CSV de ventas desde Cults, elígelo en la sección **Ventas** y asigna las columnas de fecha, producto e ingreso. Puedes indicar moneda e ID de venta. La importación acepta coma, punto y coma o tabulador, y evita volver a contar la misma fila al importar el mismo archivo otra vez. Si no hay ID, distingue ventas idénticas repetidas dentro del archivo por su posición relativa entre iguales.
+Exporta un CSV de ventas desde Cults, elígelo en la sección **Ventas** y asigna las columnas de fecha, producto e ingreso. Puedes indicar moneda e ID de venta. La importación acepta coma, punto y coma o tabulador, y evita volver a contar la misma fila al importar el mismo archivo otra vez. Si no hay ID, distingue ventas idénticas repetidas dentro del archivo por su posición relativa entre iguales. Importes y fechas se leen con las reglas de la familia (`hoard_link.money` / `hoard_link.dates`): `1.234,56`, `1,234.56`, `(12.00)`, `12 €` y `28/09/2026`, `2026-09-28`, `5 sept 2026`, `Sep 14, 2026`; el separador decimal se toma de toda la columna, un `1.234` suelto vale 1234 (salvo que la moneda de la fila escriba los decimales con punto, como USD) y una fecha sin año se rechaza, no se adivina.
 
 Los ingresos se muestran por moneda, sin sumar monedas diferentes ni asumir que el importe es beneficio neto. Mercator no consulta Cults en directo hasta disponer de un acceso y un esquema de ventas comprobados.
 
@@ -36,7 +36,7 @@ La página **Publicación** (`/publicacion`) sirve para planificar y medir lo qu
 - **Importación CSV** por plataforma con asignación de columnas editable. Los preajustes reconocen exportaciones de YouTube Studio, Instagram y TikTok por el nombre de las columnas. Son heurísticos y no se han comprobado con exportaciones reales: revisa la asignación en la vista previa. Importar dos veces el mismo archivo no añade lecturas.
 - **Pies de foto**: las sugerencias solo aparecen si Hoard Link llega a un modelo de lenguaje ya cargado; nada depende de ello.
 
-Los datos están en `data/mercator.sqlite3` (tablas `posts`, `post_metrics`, `catalog_items`).
+Los datos están en `data/mercator.sqlite3` (tablas `posts`, `post_metrics`, `catalog_items`), abierto con `hoard_link.sqlkit.Database` de la familia: una conexión compartida, WAL, 15 s de espera si el archivo está ocupado, migraciones con versión (`schema_version`) y checkpoint al parar el servidor.
 
 ## Familia
 
@@ -45,11 +45,11 @@ Mercator sigue el contrato de la familia Hoard (`faustus-plugin.json`, `x-family
 - Herramientas por `GET /api/agent/tools` y `POST /api/agent/call` (token en `data/mcp-token`, creado en el primer arranque) y por el puente stdio: `posts_list`, `post_get`, `post_upsert`, `post_schedule`, `post_publish`, `post_metrics_add`, `posts_stats`, `post_draft_from_media {media_ref, title}`, `post_caption_suggest`, `sales_batch_get {batch}`, `catalog_from_vulcan {}` (pide a Vulcan `listings_export_catalog` y lo guarda en el catálogo de Cults; Vulcan debe estar en marcha) y las dos de abajo.
 - Eventos: `mercator.post.scheduled`, `mercator.post.published`, `mercator.post.drafted`, `mercator.sales.imported {batch}` (tras importar ventas que añadieron líneas, para que una regla del hub registre el ingreso).
 - Agenda: `GET /api/family/agenda` responde con los posts programados (tipo `publish`); exige el mismo token.
-- `hoard_link/` es la biblioteca compartida, incluida sin cambios. Solo se cargan sus módulos de biblioteca estándar (con un nombre de paquete privado), así que Mercator sigue funcionando sin instalar nada.
+- `hoard_link/` es la biblioteca compartida, incluida sin cambios (versión 0.8). Se importa solo con la biblioteca estándar, así que el panel sigue funcionando sin instalar nada. El token (`data/mcp-token`) se crea una vez y se conserva entre arranques. Las respuestas de las herramientas para el asistente se limitan a 20 000 bytes (`truncated` dice qué se dejó fuera); la página web recibe todo. Los errores llegan como `{ok: false, error, code}`: `unknown_tool` 404, `invalid` 400 o `internal` 500.
 
 ## Consultar desde Faustus
 
-`python mcp_server.py` ofrece las herramientas anteriores en local sin arrancar el panel. Las dos originales son de solo lectura: `mercator_catalog` busca fichas y filtra las que no tienen etiquetas o tienen archivos pendientes/dañados; `mercator_sales` consulta ventas importadas por producto y separa los totales por moneda. Hoard Hub puede usar la entrada MCP de `faustus-plugin.json`. `MERCATOR_DATA_DIR` y `MERCATOR_PRODUCTS_DIR` permiten seleccionar datos locales distintos para pruebas aisladas.
+`python mcp_server.py` es el puente MCP por stdio (el puente de catálogo común de la familia; necesita `pip install -r requirements.txt`, es decir, el paquete `mcp`). Lista las herramientas del panel en marcha y le reenvía cada llamada con el token de `data/mcp-token`; si nada responde, arranca `python -m mercator` él mismo (`MERCATOR_BRIDGE_AUTOSTART=0` lo evita; `MERCATOR_URL`, `MERCATOR_PORT`, `MERCATOR_DATA_DIR` y `MERCATOR_TOKEN_FILE` dicen dónde está el servidor). Las dos originales son de solo lectura: `mercator_catalog` busca fichas y filtra las que no tienen etiquetas o tienen archivos pendientes/dañados; `mercator_sales` consulta ventas importadas por producto y separa los totales por moneda. Hoard Hub puede usar la entrada MCP de `faustus-plugin.json`. `MERCATOR_DATA_DIR` y `MERCATOR_PRODUCTS_DIR` permiten seleccionar datos locales distintos para pruebas aisladas.
 
 ## Verificar
 
