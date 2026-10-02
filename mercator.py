@@ -650,10 +650,13 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, result)
         except KeyError as exc:
             error = str(exc.args[0]) if exc.args else "Unknown tool"
-            self._json(404, {"ok": False, "error": error})
+            self._json(404, {"ok": False, "error": error, "code": "unknown_tool"})
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             error = str(exc)
-            self._json(400, {"ok": False, "error": error})
+            self._json(400, {"ok": False, "error": error, "code": "invalid"})
+        except (sqlite3.Error, OSError) as exc:      # a failure of the store or the disk answers, instead of dropping the connection
+            error = f"{type(exc).__name__}: {exc}"[:200]
+            self._json(500, {"ok": False, "error": error, "code": "internal"})
         finally:
             mercator_family.record_call(name or "?", ok, int((time.monotonic() - started) * 1000),
                                         caller=str(body.get("caller") or ""), error=error)
@@ -680,25 +683,25 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/sales/import":
                 result = import_sales_batch(body.get("csv", ""), body.get("columns", {}))
             elif path == "/api/posts":
-                result = agent_tools.call_tool("post_upsert", body)
+                result = agent_tools.call_tool("post_upsert", body, cap=False)
             elif path == "/api/posts/delete":
                 with session() as conn:
                     result = {"ok": True, "deleted": publishing.delete_post(conn, body.get("post_id"))["id"]}
             elif path == "/api/posts/schedule":
-                result = agent_tools.call_tool("post_schedule", body)
+                result = agent_tools.call_tool("post_schedule", body, cap=False)
             elif path == "/api/posts/publish":
-                result = agent_tools.call_tool("post_publish", body)
+                result = agent_tools.call_tool("post_publish", body, cap=False)
             elif path == "/api/posts/metrics":
-                result = agent_tools.call_tool("post_metrics_add", body)
+                result = agent_tools.call_tool("post_metrics_add", body, cap=False)
             elif path == "/api/posts/import/preview":
                 result = {"ok": True, **post_csv.preview(body.get("csv", ""), body.get("platform", ""))}
             elif path == "/api/posts/import":
                 with session() as conn:
                     result = {"ok": True, **post_csv.import_rows(conn, body.get("csv", ""), body.get("platform", ""), body.get("mapping", {}))}
             elif path == "/api/posts/caption":
-                result = agent_tools.call_tool("post_caption_suggest", body)
+                result = agent_tools.call_tool("post_caption_suggest", body, cap=False)
             else:
-                result = agent_tools.call_tool("catalog_from_vulcan", body)
+                result = agent_tools.call_tool("catalog_from_vulcan", body, cap=False)
             self._json(200, result)
         except (ValueError, TypeError, json.JSONDecodeError, KeyError) as exc:
             self._json(400, {"error": str(exc)})

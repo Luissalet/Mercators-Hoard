@@ -10,6 +10,7 @@ from typing import Any, Callable
 import cults_catalog
 import mercator_family
 import publishing
+from hoard_link.agentkit import cap_result
 
 INSTRUCTIONS = (
     "Mercator's Hoard keeps the owner's publishing plan (reels, shorts, videos, Cults3D listings), the metrics of each post, "
@@ -293,7 +294,9 @@ def tool_catalog() -> list[dict]:
     return [{k: v for k, v in tool.items() if k != "run"} for tool in TOOLS]
 
 
-def call_tool(name: str, arguments: dict | None) -> Any:
+def call_tool(name: str, arguments: dict | None, *, cap: bool = True) -> Any:
+    """Run a tool. The answer an assistant reads is capped at 20 000 bytes of JSON (the largest list is halved and ``truncated`` says
+    what was left out); the web page calls with ``cap=False`` and gets everything."""
     tool = TOOLS_BY_NAME.get(name)
     if tool is None:
         raise KeyError(f"Unknown tool: {name}")
@@ -308,4 +311,5 @@ def call_tool(name: str, arguments: dict | None) -> Any:
         if args.get(field) in (None, ""):
             raise ValueError(f"Falta el argumento {field}")
     _configure()
-    return tool["run"](args)
+    result = tool["run"](args)
+    return cap_result(result) if cap else result
