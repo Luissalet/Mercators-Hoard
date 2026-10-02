@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="es" data-hoard-app="mercator">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#141b1d">
+  <title>Mercator's Hoard — publicación</title>
+  <link rel="icon" type="image/png" href="/app-icon.png">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/publicacion.css">
+  <script src="/publicacion.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="masthead">
+      <a class="wordmark" href="/" aria-label="Mercator's Hoard, inicio"><span class="mark" aria-hidden="true">M</span><span>Mercator<span class="apostrophe">’s</span> Hoard</span></a>
+      <nav aria-label="Secciones"><a href="/#proyectos">Proyectos</a><a href="/publicacion" aria-current="page">Publicación</a><a href="/#ventas">Ventas</a><a href="/#catalogo">Catálogo</a></nav>
+      <button id="new-post" class="refresh" type="button"><span class="refresh-symbol" aria-hidden="true">+</span> Nueva publicación</button>
+    </header>
+
+    <main>
+      <div class="pub-head">
+        <div><h1>Publicación</h1><p>Reels, shorts, vídeos y fichas de Cults: qué sale, cuándo y cómo ha funcionado.</p></div>
+        <p id="pub-status" class="live-key" role="status"></p>
+      </div>
+
+      <div class="pub-toolbar">
+        <div class="seg" role="tablist" aria-label="Vista">
+          <button type="button" role="tab" data-view="calendar" aria-selected="true">Calendario</button>
+          <button type="button" role="tab" data-view="board" aria-selected="false">Tablero</button>
+          <button type="button" role="tab" data-view="metrics" aria-selected="false">Métricas</button>
+        </div>
+        <label class="inline">Plataforma <select id="filter-platform"><option value="">Todas</option></select></label>
+        <label class="inline search">Buscar <input id="filter-q" type="search" placeholder="Título, texto, hashtag…"></label>
+        <button id="open-import" class="ghost" type="button">Importar CSV</button>
+      </div>
+
+      <section id="view-calendar" aria-label="Calendario">
+        <div class="cal-nav">
+          <button type="button" id="cal-prev" class="ghost" aria-label="Anterior">‹</button>
+          <strong id="cal-title"></strong>
+          <button type="button" id="cal-next" class="ghost" aria-label="Siguiente">›</button>
+          <button type="button" id="cal-today" class="ghost">Hoy</button>
+          <div class="seg small" role="tablist" aria-label="Escala">
+            <button type="button" role="tab" data-cal="month" aria-selected="true">Mes</button>
+            <button type="button" role="tab" data-cal="week" aria-selected="false">Semana</button>
+          </div>
+        </div>
+        <div id="cal-grid" class="cal-grid"></div>
+        <p class="table-note">Se colocan por fecha programada, o por fecha de publicación cuando ya están publicadas. Las ideas y borradores sin fecha están en el tablero.</p>
+      </section>
+
+      <section id="view-board" aria-label="Tablero" hidden><div id="board" class="board"></div></section>
+
+      <section id="view-metrics" aria-label="Métricas" hidden>
+        <div id="metrics-totals"></div>
+        <div class="metrics-grid">
+          <div><h2>Mejores días</h2><div id="best-weekday" class="bars"></div></div>
+          <div><h2>Mejores horas</h2><div id="best-hour" class="bars hours"></div></div>
+        </div>
+        <p id="best-note" class="table-note"></p>
+        <div id="best-slots"></div>
+        <h2>Publicaciones que más funcionan</h2>
+        <div id="top-posts"></div>
+      </section>
+    </main>
+    <footer><span>Mercator’s Hoard</span><span>Datos locales · Las cifras son la última lectura guardada de cada publicación</span></footer>
+  </div>
+
+  <dialog id="editor" aria-labelledby="editor-title">
+    <form id="editor-form" method="dialog">
+      <div class="dlg-head"><h2 id="editor-title">Publicación</h2><button type="button" id="editor-close" class="ghost" aria-label="Cerrar">×</button></div>
+      <div class="dlg-body">
+        <div class="cols">
+          <label>Plataforma <select name="platform" required></select></label>
+          <label>Estado <select name="status"></select></label>
+        </div>
+        <label>Título <input name="title" maxlength="300" autocomplete="off"><span class="counter" data-for="title"></span></label>
+        <label>Texto <textarea name="caption" rows="6"></textarea><span class="counter" data-for="caption"></span></label>
+        <label>Hashtags <input name="hashtags" placeholder="#pokemon #3dprint"><span class="counter" data-for="hashtags"></span></label>
+        <label>Media (ruta de archivo o hoard://…) <input name="media_ref" autocomplete="off"></label>
+        <div id="media-preview" class="media-preview" hidden></div>
+        <div class="cols">
+          <label>Programada <input type="datetime-local" name="scheduled_at"></label>
+          <label>Publicada <input type="datetime-local" name="published_at"></label>
+        </div>
+        <label>URL <input name="url" type="url" placeholder="https://…"></label>
+        <label>Notas <textarea name="notes" rows="2"></textarea></label>
+        <p id="editor-message" class="form-message" role="status"></p>
+        <div class="dlg-actions">
+          <button type="submit" class="primary" id="save-post">Guardar</button>
+          <button type="button" class="ghost" id="copy-post">Copiar texto</button>
+          <button type="button" class="ghost" id="suggest-post">Sugerir texto</button>
+          <button type="button" class="ghost" id="publish-post">Marcar publicada</button>
+          <button type="button" class="ghost danger" id="delete-post">Borrar</button>
+        </div>
+        <ul id="suggestions" class="suggestions" hidden></ul>
+      </div>
+    </form>
+    <div>
+      <section id="metrics-box" class="metrics-box" hidden>
+        <h3>Métricas de esta publicación</h3>
+        <div id="metric-chart" class="metric-chart"></div>
+        <label class="inline">Gráfica <select id="metric-pick"></select></label>
+        <div class="table-wrap"><table><thead><tr><th>Lectura</th><th>Visual.</th><th>Me gusta</th><th>Coment.</th><th>Comp.</th><th>Guard.</th><th>Ventas</th><th>Ingresos</th></tr></thead><tbody id="metric-rows"></tbody></table></div>
+        <form id="metric-form" class="metric-form">
+          <label>Visualizaciones <input name="views" inputmode="numeric"></label>
+          <label>Me gusta <input name="likes" inputmode="numeric"></label>
+          <label>Comentarios <input name="comments" inputmode="numeric"></label>
+          <label>Compartidos <input name="shares" inputmode="numeric"></label>
+          <label>Guardados <input name="saves" inputmode="numeric"></label>
+          <label>Ventas <input name="sales" inputmode="numeric"></label>
+          <label>Ingresos <input name="revenue" inputmode="decimal"></label>
+          <label>Moneda <input name="currency" maxlength="3" value="EUR"></label>
+          <button type="submit" class="ghost">Añadir lectura</button>
+        </form>
+        <p id="metric-message" class="form-message" role="status"></p>
+      </section>
+    </div>
+  </dialog>
+
+  <dialog id="importer" aria-labelledby="import-title">
+    <form id="import-form" method="dialog">
+      <div class="dlg-head"><h2 id="import-title">Importar métricas desde CSV</h2><button type="button" id="import-close" class="ghost" aria-label="Cerrar">×</button></div>
+      <div class="dlg-body">
+        <p>Exporta el CSV desde la plataforma y elígelo aquí. Mercator reconoce columnas habituales (YouTube Studio, Instagram, TikTok) y tú puedes corregir la asignación. Repetir la importación no duplica lecturas iguales.</p>
+        <label>Plataforma <select name="platform" id="import-platform"></select></label>
+        <label class="file-pick" for="import-file"><span id="import-file-label">Elegir archivo CSV</span><input id="import-file" type="file" accept=".csv,text/csv"></label>
+        <p id="import-preset" class="table-note"></p>
+        <div id="import-mapping" class="column-mapping" hidden></div>
+        <p id="import-message" class="form-message" role="status"></p>
+        <div class="dlg-actions"><button type="submit" class="primary" id="import-go" disabled>Importar</button></div>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

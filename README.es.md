@@ -26,9 +26,30 @@ Los ingresos se muestran por moneda, sin sumar monedas diferentes ni asumir que 
 
 Lee, sin modificar, las subcarpetas de `Desktop/Modelos/Contornos pokemon` y detecta cuáles tienen `cults3d.json`. Puedes cambiar la ubicación con `MERCATOR_PRODUCTS_DIR` en `.env`.
 
+## Publicación
+
+La página **Publicación** (`/publicacion`) sirve para planificar y medir lo que publicas.
+
+- **Posts** con plataforma (Reel o post de Instagram, TikTok, YouTube Short o vídeo, X, Cults3D, otra), título, pie, hashtags, referencia al material, estado (idea, borrador, programado, publicado, archivado), fechas de programación y publicación, URL y notas. La referencia al material es `hoard://lumiere/render/<id>`, `hoard://prospero/production/<id>`, `hoard://vulcan/model/<id>` o una ruta de archivo; si es una imagen o vídeo servible, se muestra una vista previa.
+- **Calendario** (semana o mes) y **tablero** por estado. El editor muestra un contador de caracteres por plataforma (límites orientativos, no garantizados) y un botón para copiar el pie.
+- **Métricas**: añade lecturas a mano (visualizaciones, me gusta, comentarios, compartidos, guardados, ventas, ingresos) o importa un CSV. Gráfica por post, totales por plataforma y **mejores horas** (media de visualizaciones por día de la semana y hora de los posts publicados; avisa cuando hay pocos posts).
+- **Importación CSV** por plataforma con asignación de columnas editable. Los preajustes reconocen exportaciones de YouTube Studio, Instagram y TikTok por el nombre de las columnas. Son heurísticos y no se han comprobado con exportaciones reales: revisa la asignación en la vista previa. Importar dos veces el mismo archivo no añade lecturas.
+- **Pies de foto**: las sugerencias solo aparecen si Hoard Link llega a un modelo de lenguaje ya cargado; nada depende de ello.
+
+Los datos están en `data/mercator.sqlite3` (tablas `posts`, `post_metrics`, `catalog_items`).
+
+## Familia
+
+Mercator sigue el contrato de la familia Hoard (`faustus-plugin.json`, `x-family`):
+
+- Herramientas por `GET /api/agent/tools` y `POST /api/agent/call` (token en `data/mcp-token`, creado en el primer arranque) y por el puente stdio: `posts_list`, `post_get`, `post_upsert`, `post_schedule`, `post_publish`, `post_metrics_add`, `posts_stats`, `post_draft_from_media {media_ref, title}`, `post_caption_suggest`, `sales_batch_get {batch}`, `catalog_from_vulcan {}` (pide a Vulcan `listings_export_catalog` y lo guarda en el catálogo de Cults; Vulcan debe estar en marcha) y las dos de abajo.
+- Eventos: `mercator.post.scheduled`, `mercator.post.published`, `mercator.post.drafted`, `mercator.sales.imported {batch}` (tras importar ventas que añadieron líneas, para que una regla del hub registre el ingreso).
+- Agenda: `GET /api/family/agenda` responde con los posts programados (tipo `publish`); exige el mismo token.
+- `hoard_link/` es la biblioteca compartida, incluida sin cambios. Solo se cargan sus módulos de biblioteca estándar (con un nombre de paquete privado), así que Mercator sigue funcionando sin instalar nada.
+
 ## Consultar desde Faustus
 
-`python mcp_server.py` ofrece dos herramientas MCP locales de solo lectura sin arrancar el panel: `mercator_catalog` busca fichas y filtra las que no tienen etiquetas o tienen archivos pendientes/dañados; `mercator_sales` consulta ventas importadas por producto y separa los totales por moneda. Hoard Hub puede usar la entrada MCP de `faustus-plugin.json`. `MERCATOR_DATA_DIR` y `MERCATOR_PRODUCTS_DIR` permiten seleccionar datos locales distintos para pruebas aisladas.
+`python mcp_server.py` ofrece las herramientas anteriores en local sin arrancar el panel. Las dos originales son de solo lectura: `mercator_catalog` busca fichas y filtra las que no tienen etiquetas o tienen archivos pendientes/dañados; `mercator_sales` consulta ventas importadas por producto y separa los totales por moneda. Hoard Hub puede usar la entrada MCP de `faustus-plugin.json`. `MERCATOR_DATA_DIR` y `MERCATOR_PRODUCTS_DIR` permiten seleccionar datos locales distintos para pruebas aisladas.
 
 ## Verificar
 

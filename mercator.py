@@ -7,8 +7,10 @@ import hashlib
 import io
 import json
 import os
+import re
 import sqlite3
 import threading
+import time
 import urllib.error
 import urllib.request
 from contextlib import closing
@@ -16,7 +18,16 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
+
+if __name__ == "__main__":  # modules that ``import mercator`` must get this running copy, not a second one
+    import sys
+    sys.modules.setdefault("mercator", sys.modules["__main__"])
+
+import cults_catalog
+import mercator_family
+import post_csv
+import publishing
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get("MERCATOR_DATA_DIR") or ROOT / "data")
@@ -77,6 +88,10 @@ def db() -> sqlite3.Connection:
             rows INTEGER NOT NULL, added INTEGER NOT NULL
         );
     """)
+    conn.executescript(publishing.SCHEMA + cults_catalog.SCHEMA)
+    for table in ("sales", "sales_imports"):  # stores created before batches existed
+        if "batch" not in {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN batch TEXT")
     return conn
 
 
@@ -235,6 +250,14 @@ def parse_date(value: str) -> str:
 
 
 def import_sales(text: str, columns: dict[str, str]) -> dict:
+    """Import a sales CSV; the answer keeps its original three counters (see :func:`import_sales_batch`)."""
+    result = import_sales_batch(text, columns)
+    return {key: result[key] for key in ("rows", "added", "duplicates")}
+
+
+def import_sales_batch(text: str, columns: dict[str, str]) -> dict:
+    """Import a sales CSV. The lines this import adds form a batch (``batch``) that other apps can read with
+    :func:`sales_batch`; rows that were already registered are not part of any new batch."""
     if not isinstance(text, str) or not isinstance(columns, dict):
         raise ValueError("Archivo o columnas no válidos")
     text = text.lstrip("\ufeff")
@@ -266,20 +289,67 @@ def import_sales(text: str, columns: dict[str, str]) -> dict:
             identity = f"row:{basis}|{occurrences[basis]}"
         fingerprint = hashlib.sha256(identity.encode("utf-8")).hexdigest()
         parsed.append((fingerprint, sold_at, product, str(amount), currency))
+    file_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    batch = "imp-" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f") + "-" + file_hash[:6]
     with closing(db()) as conn, conn:
         before = conn.total_changes
-        conn.executemany("INSERT OR IGNORE INTO sales(fingerprint,sold_at,product,amount,currency) VALUES (?,?,?,?,?)", parsed)
+        conn.executemany("INSERT OR IGNORE INTO sales(fingerprint,sold_at,product,amount,currency,batch) VALUES (?,?,?,?,?,?)",
+                         [(*row, batch) for row in parsed])
         added = conn.total_changes - before
-        conn.execute("INSERT INTO sales_imports VALUES (?,?,?,?)",
-                     (utcnow(), hashlib.sha256(text.encode("utf-8")).hexdigest(), len(parsed), added))
-    return {"rows": len(parsed), "added": added, "duplicates": len(parsed) - added}
+        conn.execute("INSERT INTO sales_imports(imported_at,file_hash,rows,added,batch) VALUES (?,?,?,?,?)",
+                     (utcnow(), file_hash, len(parsed), added, batch))
+    if added:
+        mercator_family.emit("mercator.sales.imported", {"batch": batch, "rows": len(parsed), "added": added, "source": "cults-csv"})
+    return {"rows": len(parsed), "added": added, "duplicates": len(parsed) - added, "batch": batch}
+
+
+def sales_batch(batch: str) -> dict:
+    """The sales lines one import added, in file order, for apps that book them (``line`` is 1-based and stable)."""
+    if not isinstance(batch, str) or not batch.strip():
+        raise ValueError("batch no válido")
+    with closing(db()) as conn, conn:
+        meta = conn.execute("SELECT imported_at, rows, added FROM sales_imports WHERE batch=? ORDER BY imported_at LIMIT 1",
+                            (batch.strip(),)).fetchone()
+        if meta is None:
+            raise ValueError(f"No existe el lote de ventas {batch}")
+        rows = conn.execute("SELECT fingerprint, sold_at, product, amount, currency FROM sales WHERE batch=? ORDER BY rowid",
+                            (batch.strip(),)).fetchall()
+    lines = [{"line": number, "id": row["fingerprint"][:16], "sold_at": row["sold_at"], "product": row["product"],
+              "amount": row["amount"], "currency": row["currency"]} for number, row in enumerate(rows, start=1)]
+    totals: dict[str, Decimal] = {}
+    for line in lines:
+        totals[line["currency"]] = totals.get(line["currency"], Decimal("0")) + Decimal(line["amount"])
+    return {"ok": True, "batch": batch.strip(), "source": "cults-csv", "imported_at": meta["imported_at"], "rows": meta["rows"],
+            "count": len(lines), "lines": lines,
+            "by_currency": [{"currency": key, "income": str(value)} for key, value in sorted(totals.items())]}
 
 
 def products() -> dict:
+    """Product folders on disk (read-only) plus the listings imported from other apps (``catalog_from_vulcan``)."""
+    items, folder_ok = _scan_products()
+    imported = cults_catalog.list_items(DB)
+    by_id = {item["id"].casefold(): item for item in items}
+    for entry in imported:
+        key = (entry["folder"].replace("\\", "/").rstrip("/").rsplit("/", 1)[-1] or entry["title"]).casefold()
+        match = by_id.get(key)
+        if match is not None:
+            match["catalog"] = {"ref": entry["ref"], "status": entry["status"], "price": entry["price"], "currency": entry["currency"]}
+            continue
+        items.append({"id": entry["folder"].replace("\\", "/").rstrip("/").rsplit("/", 1)[-1] or entry["ref"], "title": entry["title"],
+                      "has_listing": bool(entry["description"]), "tags": len(entry["tags"]), "updated_at": entry["updated_at"],
+                      "source": entry["source"], "catalog": {"ref": entry["ref"], "status": entry["status"], "price": entry["price"],
+                                                             "currency": entry["currency"]}})
+    if not folder_ok and not imported:
+        return {"state": "needs_access", "count": 0, "with_listing": 0, "items": []}
+    items.sort(key=lambda item: item["id"])
+    return {"state": "ok", "count": len(items), "with_listing": sum(1 for item in items if item["has_listing"]), "items": items}
+
+
+def _scan_products() -> tuple[list[dict], bool]:
     default = Path.home() / "Desktop" / "Modelos" / "Contornos pokemon"
     root = Path(secrets().get("MERCATOR_PRODUCTS_DIR") or default)
     if not root.is_dir():
-        return {"state": "needs_access", "count": 0, "with_listing": 0, "items": []}
+        return [], False
     items = []
     for folder in root.iterdir():
         if not folder.is_dir() or folder.name.startswith("."):
@@ -300,9 +370,7 @@ def products() -> dict:
             except (OSError, ValueError):
                 entry["invalid_listing"] = True
         items.append(entry)
-    items.sort(key=lambda item: item["id"])
-    return {"state": "ok", "count": len(items),
-            "with_listing": sum(1 for item in items if item["has_listing"]), "items": items}
+    return items, True
 
 
 def catalog_query(query: str = "", untagged: bool = False, missing: bool = False,
@@ -386,6 +454,44 @@ def background_refresh(stop: threading.Event) -> None:
         stop.wait(6 * 60 * 60)
 
 
+STATIC_FILES = {
+    "/": ("index.html", "text/html; charset=utf-8"), "/index.html": ("index.html", "text/html; charset=utf-8"),
+    "/app.js": ("app.js", "text/javascript; charset=utf-8"), "/style.css": ("style.css", "text/css; charset=utf-8"),
+    "/publicacion": ("publicacion.html", "text/html; charset=utf-8"), "/publicacion.html": ("publicacion.html", "text/html; charset=utf-8"),
+    "/publicacion.js": ("publicacion.js", "text/javascript; charset=utf-8"), "/publicacion.css": ("publicacion.css", "text/css; charset=utf-8"),
+}
+MAX_BODY = 5_000_000
+
+
+def base_url() -> str:
+    return f"http://127.0.0.1:{os.environ.get('MERCATOR_PORT', '5195')}"
+
+
+def agenda_provider(date_from, date_to, sphere):
+    """Scheduled posts for the family agenda."""
+    with closing(db()) as conn, conn:
+        return publishing.agenda_items(conn, date_from, date_to, base_url())
+
+
+def publishing_meta() -> dict:
+    return {"platforms": [{"id": key, **meta} for key, meta in publishing.PLATFORMS.items()],
+            "statuses": list(publishing.STATUSES), "presets": list(post_csv.PRESET_MARKERS)}
+
+
+def post_media_file(post_id: int) -> tuple[Path, str] | None:
+    """The image or video a post's ``media_ref`` points to, when it is an absolute local file of a servable type."""
+    with closing(db()) as conn, conn:
+        post = publishing.get_post(conn, post_id, metrics=False)
+    ref = post["media_ref"]
+    if not ref or ref.startswith("hoard://"):
+        return None
+    path = Path(ref)
+    kind = publishing.MEDIA_EXTENSIONS.get(path.suffix.lower())
+    if kind is None or not path.is_absolute() or not path.is_file():
+        return None
+    return path, kind
+
+
 class Handler(BaseHTTPRequestHandler):
     def _reply(self, code: int, body: bytes, content_type: str) -> None:
         self.send_response(code)
@@ -406,41 +512,171 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin")
         return not origin or urlsplit(origin).netloc == self.headers.get("Host")
 
+    def _body(self) -> dict:
+        length = int(self.headers.get("Content-Length", "0"))
+        if length < 0 or length > MAX_BODY:
+            raise ValueError("Archivo demasiado grande (máximo 5 MB)")
+        body = json.loads(self.rfile.read(length) or b"{}")
+        if not isinstance(body, dict):
+            raise ValueError("Cuerpo no válido")
+        return body
+
+    def _serve_media(self, post_id: int) -> None:
+        found = post_media_file(post_id)
+        if found is None:
+            self._json(404, {"error": "Sin vista previa para este media"})
+            return
+        path, kind = found
+        size = path.stat().st_size
+        start, end, code = 0, size - 1, 200
+        match = re.fullmatch(r"bytes=(\d*)-(\d*)", self.headers.get("Range", "").strip())
+        if match and (match.group(1) or match.group(2)) and size:
+            if match.group(1):
+                start = int(match.group(1))
+                end = int(match.group(2)) if match.group(2) else size - 1
+            else:
+                start = max(0, size - int(match.group(2)))
+            end = min(end, size - 1)
+            if start > end:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.end_headers()
+                return
+            code = 206
+        self.send_response(code)
+        self.send_header("Content-Type", kind)
+        self.send_header("Content-Length", str(end - start + 1 if size else 0))
+        self.send_header("Accept-Ranges", "bytes")
+        if code == 206:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        with path.open("rb") as handle:
+            handle.seek(start)
+            left = end - start + 1 if size else 0
+            while left > 0:
+                block = handle.read(min(1 << 20, left))
+                if not block:
+                    break
+                self.wfile.write(block)
+                left -= len(block)
+
     def do_GET(self) -> None:
         if not self._trusted():
             self._json(403, {"error": "Origen no permitido"})
             return
-        if self.path == "/api/health":
-            self._json(200, {"service": "mercator-hoard", "status": "ok"})
-        elif self.path == "/api/summary":
-            self._json(200, summary())
-        elif self.path == "/icon.svg":
-            self._reply(200, (ROOT / "icon.svg").read_bytes(), "image/svg+xml")
-        elif self.path == "/app-icon.png":
-            self._reply(200, (ROOT / "app-icon.png").read_bytes(), "image/png")
-        elif self.path in ("/", "/index.html", "/app.js", "/style.css"):
-            name = "index.html" if self.path == "/" else self.path.lstrip("/")
-            content_type = {"index.html": "text/html; charset=utf-8", "app.js": "text/javascript; charset=utf-8",
-                            "style.css": "text/css; charset=utf-8"}[name]
-            self._reply(200, (ROOT / "static" / name).read_bytes(), content_type)
-        else:
-            self._json(404, {"error": "No encontrado"})
+        parts = urlsplit(self.path)
+        path, query = parts.path, {key: values[0] for key, values in parse_qs(parts.query).items()}
+        try:
+            if path == "/api/health":
+                self._json(200, {"service": "mercator-hoard", "status": "ok", "hoard_link": mercator_family.health_block()})
+            elif path == "/api/summary":
+                self._json(200, summary())
+            elif path == "/api/publishing/meta":
+                self._json(200, publishing_meta())
+            elif path == "/api/posts":
+                with closing(db()) as conn, conn:
+                    self._json(200, publishing.list_posts(conn, query.get("status", ""), query.get("platform", ""), query.get("from", ""),
+                                                          query.get("to", ""), query.get("q", ""), int(query.get("limit", 500)),
+                                                          int(query.get("offset", 0))))
+            elif path == "/api/posts/stats":
+                with closing(db()) as conn, conn:
+                    self._json(200, publishing.stats(conn, query.get("platform", "")))
+            elif re.fullmatch(r"/api/posts/\d+(/media)?", path):
+                post_id = int(path.split("/")[3])
+                if path.endswith("/media"):
+                    self._serve_media(post_id)
+                else:
+                    with closing(db()) as conn, conn:
+                        self._json(200, {"post": publishing.get_post(conn, post_id)})
+            elif path == "/api/agent/tools":
+                import agent_tools
+                self._json(200, {"instructions": agent_tools.INSTRUCTIONS, "tools": agent_tools.tool_catalog()})
+            elif path == "/api/family/agenda":
+                if not mercator_family.bearer_ok(self.headers.get("Authorization", "")):
+                    self._json(401, {"ok": False, "error": "a family bearer token is required", "items": []})
+                else:
+                    self._json(200, mercator_family.agenda(agenda_provider, query.get("from"), query.get("to"), query.get("sphere", "")))
+            elif path == "/icon.svg":
+                self._reply(200, (ROOT / "icon.svg").read_bytes(), "image/svg+xml")
+            elif path == "/app-icon.png":
+                self._reply(200, (ROOT / "app-icon.png").read_bytes(), "image/png")
+            elif path in STATIC_FILES:
+                name, content_type = STATIC_FILES[path]
+                self._reply(200, (ROOT / "static" / name).read_bytes(), content_type)
+            else:
+                self._json(404, {"error": "No encontrado"})
+        except (ValueError, TypeError) as exc:
+            self._json(400, {"error": str(exc)})
+
+    def _post_agent_call(self) -> None:
+        import agent_tools
+        if not mercator_family.bearer_ok(self.headers.get("Authorization", "")):
+            self._json(401, {"ok": False, "error": "Invalid MCP token."})
+            return
+        started = time.monotonic()
+        body, name, ok, error = {}, "", False, ""
+        try:
+            body = self._body()
+            name = str(body.get("name") or body.get("tool") or "")
+            arguments = body.get("arguments") if body.get("arguments") is not None else body.get("args")
+            result = agent_tools.call_tool(name, arguments)
+            ok = True
+            self._json(200, result)
+        except KeyError as exc:
+            error = str(exc.args[0]) if exc.args else "Unknown tool"
+            self._json(404, {"ok": False, "error": error})
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            error = str(exc)
+            self._json(400, {"ok": False, "error": error})
+        finally:
+            mercator_family.record_call(name or "?", ok, int((time.monotonic() - started) * 1000),
+                                        caller=str(body.get("caller") or ""), error=error)
 
     def do_POST(self) -> None:
         if not self._trusted():
             self._json(403, {"error": "Origen no permitido"})
             return
-        if self.path not in ("/api/refresh", "/api/sales/import"):
+        path = urlsplit(self.path).path
+        if path == "/api/agent/call":
+            self._post_agent_call()
+            return
+        routes = {"/api/refresh", "/api/sales/import", "/api/posts", "/api/posts/delete", "/api/posts/schedule", "/api/posts/publish",
+                  "/api/posts/metrics", "/api/posts/import/preview", "/api/posts/import", "/api/posts/caption", "/api/catalog/from-vulcan"}
+        if path not in routes:
             self._json(404, {"error": "No encontrado"})
             return
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-            if length < 0 or length > 5_000_000:
-                raise ValueError("Archivo demasiado grande (máximo 5 MB)")
-            body = json.loads(self.rfile.read(length) or b"{}")
-            result = refresh() if self.path == "/api/refresh" else import_sales(body.get("csv", ""), body.get("columns", {}))
+            import agent_tools
+            body = {} if path == "/api/refresh" else self._body()
+            if path == "/api/refresh":
+                self.rfile.read(int(self.headers.get("Content-Length", "0") or 0))
+                result = refresh()
+            elif path == "/api/sales/import":
+                result = import_sales_batch(body.get("csv", ""), body.get("columns", {}))
+            elif path == "/api/posts":
+                result = agent_tools.call_tool("post_upsert", body)
+            elif path == "/api/posts/delete":
+                with closing(db()) as conn, conn:
+                    result = {"ok": True, "deleted": publishing.delete_post(conn, body.get("post_id"))["id"]}
+            elif path == "/api/posts/schedule":
+                result = agent_tools.call_tool("post_schedule", body)
+            elif path == "/api/posts/publish":
+                result = agent_tools.call_tool("post_publish", body)
+            elif path == "/api/posts/metrics":
+                result = agent_tools.call_tool("post_metrics_add", body)
+            elif path == "/api/posts/import/preview":
+                result = {"ok": True, **post_csv.preview(body.get("csv", ""), body.get("platform", ""))}
+            elif path == "/api/posts/import":
+                with closing(db()) as conn, conn:
+                    result = {"ok": True, **post_csv.import_rows(conn, body.get("csv", ""), body.get("platform", ""), body.get("mapping", {}))}
+            elif path == "/api/posts/caption":
+                result = agent_tools.call_tool("post_caption_suggest", body)
+            else:
+                result = agent_tools.call_tool("catalog_from_vulcan", body)
             self._json(200, result)
-        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        except (ValueError, TypeError, json.JSONDecodeError, KeyError) as exc:
             self._json(400, {"error": str(exc)})
 
     def log_message(self, fmt: str, *args: object) -> None:
@@ -451,6 +687,7 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     port = int(os.environ.get("MERCATOR_PORT", "5195"))
     db().close()
+    mercator_family.configure(DATA)
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     stop = threading.Event()
     threading.Thread(target=background_refresh, args=(stop,), daemon=True).start()
