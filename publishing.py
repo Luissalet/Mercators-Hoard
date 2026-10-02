@@ -13,6 +13,9 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from hoard_link import dates as hl_dates
+from hoard_link import money as hl_money
+
 PLATFORMS: dict[str, dict[str, Any]] = {
     "instagram_reel": {"label": "Instagram Reel", "caption_limit": 2200, "title_limit": None, "hashtag_limit": 30, "media": "video"},
     "instagram_post": {"label": "Instagram", "caption_limit": 2200, "title_limit": None, "hashtag_limit": 30, "media": "image"},
@@ -161,14 +164,48 @@ def _int_metric(value: Any, field: str) -> int | None:
     return number
 
 
+def amount_text(value: Decimal, typed: str) -> str:
+    """The text an amount is stored as: the digits the person wrote, so ``12`` stays ``12`` and ``12,50`` is ``12.50``.
+    The sales fingerprint hashes it, so it must not change between versions (the shared parser always gives a fraction)."""
+    if value.as_tuple().exponent == -1 and value == value.to_integral_value() and not re.search(r"[.,]0$", re.sub(r"[^\d.,]", "", typed)):
+        value = value.quantize(Decimal(1))
+    return str(value)
+
+
+def parse_amount(value: Any, *, decimal: str | None = None, currency: str | None = None) -> Decimal:
+    """An exact amount from text with the family's rules (``1.234,56``, ``1,234.56``, ``(12.00)``, ``12 €``; a lone ``1.234`` is
+    1234 unless the currency writes dots as decimals). ``decimal`` forces the decimal mark when a whole column shows it.
+    Raises ``ValueError`` for anything that is not a number."""
+    amount = hl_money.parse_amount(str(value).strip(), decimal=decimal, currency_hint=currency)
+    if amount is None:
+        raise ValueError(f"Importe no válido: {value}")
+    return amount
+
+
 def _money(value: Any, field: str = "revenue") -> str | None:
     if value is None or (isinstance(value, str) and not value.strip()):
         return None
-    import mercator
     try:
-        return str(mercator.parse_amount(str(value)))
+        return amount_text(parse_amount(value), str(value))
     except ValueError as exc:
         raise ValueError(f"{field} no válido: {value}") from exc
+
+
+_YEAR = re.compile(r"(?<!\d)\d{4}(?!\d)|[/.\-]\d{2}$")
+
+
+def day_of(value: Any) -> str | None:
+    """The calendar day (``YYYY-MM-DD``) a text names, or None. Understands ISO dates and timestamps, ``28/09/2026`` (also ``-`` and
+    ``.``, day first; a day above 12 may also come first as month: ``12/25/2026``) and written months in Spanish or English.
+    A date without a year is never guessed."""
+    text = "" if value is None else str(value).strip()
+    iso = hl_dates.parse_iso(text)
+    if iso is not None:
+        return iso.isoformat()
+    for hit in hl_dates.find_dates(text, dayfirst=True):
+        if _YEAR.search(hit.text.strip()):
+            return hit.date.isoformat()
+    return None
 
 
 def caption_text(post: dict) -> str:

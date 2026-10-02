@@ -10,11 +10,10 @@ from __future__ import annotations
 import csv
 import io
 import re
-import unicodedata
-from datetime import datetime
 from typing import Any
 
 import publishing
+from hoard_link import text as hl_text
 
 FIELDS = ("external_id", "title", "caption", "published_at", "url", "views", "likes", "comments", "shares",
           "saves", "sales", "revenue", "currency")
@@ -44,14 +43,12 @@ PRESET_MARKERS: dict[str, tuple[str, ...]] = {
 PRESET_PLATFORM = {"youtube_studio": "youtube", "instagram": "instagram_reel", "tiktok": "tiktok"}
 PLATFORM_PRESET = {"youtube": "youtube_studio", "youtube_short": "youtube_studio", "instagram_reel": "instagram",
                    "instagram_post": "instagram", "tiktok": "tiktok"}
-MONTHS = {"ene": 1, "jan": 1, "feb": 2, "mar": 3, "abr": 4, "apr": 4, "may": 5, "jun": 6, "jul": 7, "ago": 8, "aug": 8,
-          "sep": 9, "sept": 9, "set": 9, "oct": 10, "nov": 11, "dic": 12, "dec": 12}
 TOTAL_LABELS = {"total", "totales", "totals"}
 
 
 def fold(name: str) -> str:
-    text = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode("ascii").casefold()
-    return re.sub(r"[^a-z0-9]", "", text)
+    """A column name as bare lowercase letters and digits (accents and punctuation gone), to compare it with the known names."""
+    return re.sub(r"[^a-z0-9]", "", hl_text.fold(name, keep_length=False))
 
 
 def read_table(text: str) -> tuple[list[str], list[dict[str, str]], str]:
@@ -132,18 +129,7 @@ def parse_when(value: str) -> str | None:
         return publishing.norm_when(raw, "fecha")
     except ValueError:
         pass
-    for fmt in ("%b %d, %Y", "%B %d, %Y", "%d %b %Y", "%d %B %Y", "%m/%d/%Y", "%Y/%m/%d", "%d.%m.%Y"):
-        try:
-            return datetime.strptime(raw, fmt).date().isoformat()
-        except ValueError:
-            continue
-    match = re.fullmatch(r"(\d{1,2})\s+(?:de\s+)?([A-Za-zñ]{3,9})\.?,?\s+(?:de\s+)?(\d{4})", raw)
-    if match and match.group(2)[:3].casefold() in MONTHS:
-        try:
-            return datetime(int(match.group(3)), MONTHS[match.group(2)[:3].casefold()], int(match.group(1))).date().isoformat()
-        except ValueError:
-            return None
-    return None
+    return publishing.day_of(raw)
 
 
 def _norm_url(url: str) -> str:

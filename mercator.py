@@ -15,7 +15,7 @@ import urllib.error
 import urllib.request
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -28,6 +28,7 @@ import cults_catalog
 import mercator_family
 import post_csv
 import publishing
+from hoard_link import money as hl_money
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get("MERCATOR_DATA_DIR") or ROOT / "data")
@@ -220,35 +221,6 @@ def refresh() -> dict:
     return summary()
 
 
-def parse_amount(value: str) -> Decimal:
-    raw = str(value).strip().replace("€", "").replace("$", "").replace(" ", "")
-    if "," in raw and "." in raw:
-        raw = raw.replace(".", "").replace(",", ".") if raw.rfind(",") > raw.rfind(".") else raw.replace(",", "")
-    elif "," in raw:
-        raw = raw.replace(",", ".")
-    try:
-        amount = Decimal(raw)
-        if not amount.is_finite():
-            raise ValueError(f"Importe no válido: {value}")
-        return amount
-    except InvalidOperation as exc:
-        raise ValueError(f"Importe no válido: {value}") from exc
-
-
-def parse_date(value: str) -> str:
-    raw = str(value).strip()
-    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y", "%d/%m/%Y %H:%M:%S",
-                "%d-%m-%Y", "%d-%m-%Y %H:%M:%S"):
-        try:
-            return datetime.strptime(raw, fmt).date().isoformat()
-        except ValueError:
-            pass
-    try:
-        return datetime.fromisoformat(raw.replace("Z", "+00:00")).date().isoformat()
-    except ValueError as exc:
-        raise ValueError(f"Fecha no reconocida: {value}") from exc
-
-
 def import_sales(text: str, columns: dict[str, str]) -> dict:
     """Import a sales CSV; the answer keeps its original three counters (see :func:`import_sales_batch`)."""
     result = import_sales_batch(text, columns)
@@ -271,24 +243,32 @@ def import_sales_batch(text: str, columns: dict[str, str]) -> dict:
         raise ValueError("Elige columnas de fecha, producto e ingreso")
     parsed = []
     occurrences: dict[str, int] = {}
+    decimal = hl_money.detect_decimal(row[columns["amount"]] for row in rows)    # the column tells which mark is the decimal one
     for index, row in enumerate(rows, start=2):
-        sold_at = parse_date(row[columns["date"]])
+        sold_at = publishing.day_of(row[columns["date"]])
+        if sold_at is None:
+            raise ValueError(f"Fecha no reconocida: {row[columns['date']]}")
         product = str(row[columns["product"]]).strip()
-        if not sold_at or not product:
+        if not product:
             raise ValueError(f"Fila {index}: falta fecha o producto")
-        amount = parse_amount(row[columns["amount"]])
         currency = str(row.get(columns.get("currency", ""), "EUR") or "EUR").strip().upper()
         if len(currency) != 3 or not currency.isalpha():
             raise ValueError(f"Fila {index}: moneda no válida")
+        typed = str(row[columns["amount"]])
+        try:
+            value = publishing.parse_amount(typed, decimal=decimal, currency=currency)
+        except ValueError:      # a cell that disagrees with the rest of its column is read on its own
+            value = publishing.parse_amount(typed, currency=currency)
+        amount = publishing.amount_text(value, typed)
         sale_id = str(row.get(columns.get("id", ""), "")).strip()
         if sale_id:
             identity = f"id:{sale_id}"
         else:
-            basis = "|".join((sold_at, product, str(amount), currency))
+            basis = "|".join((sold_at, product, amount, currency))
             occurrences[basis] = occurrences.get(basis, 0) + 1
             identity = f"row:{basis}|{occurrences[basis]}"
         fingerprint = hashlib.sha256(identity.encode("utf-8")).hexdigest()
-        parsed.append((fingerprint, sold_at, product, str(amount), currency))
+        parsed.append((fingerprint, sold_at, product, amount, currency))
     file_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
     batch = "imp-" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f") + "-" + file_hash[:6]
     with closing(db()) as conn, conn:
