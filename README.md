@@ -51,4 +51,4 @@ Mercator follows the Hoard family contract (`faustus-plugin.json`, `x-family`):
 python -m unittest discover -s tests   # or: python -m pytest tests (the bridge tests need the mcp package and are skipped without it)
 ```
 
-The server binds only to `127.0.0.1`.
+The server binds only to `127.0.0.1` and runs the family's request guard (`hoard_link.guard`): the `Host` must be loopback and name the server's port (other names go in `MERCATOR_ALLOWED_HOSTS`), a browser `Origin` must be local with the same port, cross-site fetches and form posts are refused.

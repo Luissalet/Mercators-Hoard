@@ -30,6 +30,7 @@ import cults_catalog
 import mercator_family
 import post_csv
 import publishing
+from hoard_link import guard
 from hoard_link import money as hl_money
 from hoard_link.sqlkit import Database
 
@@ -527,11 +528,11 @@ class Handler(BaseHTTPRequestHandler):
         self._reply(code, json.dumps(value, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
 
     def _trusted(self) -> bool:
-        host = self.headers.get("Host", "").split(":", 1)[0]
-        if host not in ("127.0.0.1", "localhost"):
-            return False
-        origin = self.headers.get("Origin")
-        return not origin or urlsplit(origin).netloc == self.headers.get("Host")
+        """The family's request guard: a loopback ``Host`` naming this server's port (or one listed in MERCATOR_ALLOWED_HOSTS), a local
+        ``Origin`` of the same port, no cross-site fetches and no form posts."""
+        headers = {name.lower(): value for name, value in self.headers.items()}
+        allowed = guard.parse_allowed_hosts(os.environ.get("MERCATOR_ALLOWED_HOSTS"))
+        return guard.check_request(self.command, headers, self.server.server_port, allowed, strict_ports=True) is None
 
     def _body(self) -> dict:
         length = int(self.headers.get("Content-Length", "0"))

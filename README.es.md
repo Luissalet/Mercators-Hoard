@@ -53,4 +53,4 @@ Mercator sigue el contrato de la familia Hoard (`faustus-plugin.json`, `x-family
 
 ## Verificar
 
-`python -m unittest discover -s tests` comprueba importación, límites de acceso y comportamiento de la lectura. El servidor está limitado a `127.0.0.1`; no lo expongas a la red con claves de servidor cargadas.
+`python -m unittest discover -s tests` comprueba importación, límites de acceso y comportamiento de la lectura. El servidor está limitado a `127.0.0.1` y aplica el guardia de peticiones de la familia (`hoard_link.guard`): el `Host` debe ser local y nombrar el puerto del servidor (otros nombres, en `MERCATOR_ALLOWED_HOSTS`), el `Origin` del navegador debe ser local con el mismo puerto y se rechazan las peticiones entre sitios y los envíos de formularios; no lo expongas a la red con claves de servidor cargadas.

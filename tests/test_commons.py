@@ -256,6 +256,34 @@ class TokenTests(Base):
         self.assertFalse(mercator_family.bearer_ok("Bearer "))
 
 
+class GuardTests(Base):
+    def status(self, port, method="GET", path="/api/health", headers=None, body=None):
+        conn = HTTPConnection("127.0.0.1", port, timeout=10)
+        conn.request(method, path, body, headers or {})
+        response = conn.getresponse()
+        response.read()
+        conn.close()
+        return response.status
+
+    def test_the_family_guard_protects_the_dashboard(self):
+        with running_server() as port:
+            here = f"127.0.0.1:{port}"
+            self.assertEqual(self.status(port, headers={"Host": here}), 200)
+            self.assertEqual(self.status(port, headers={"Host": here, "Origin": f"http://{here}"}), 200)
+            self.assertEqual(self.status(port, headers={"Host": "evil.example"}), 403)
+            self.assertEqual(self.status(port, headers={"Host": "127.0.0.1:1"}), 403, "a Host naming another port is refused")
+            self.assertEqual(self.status(port, headers={"Host": here, "Origin": "https://evil.example"}), 403)
+            self.assertEqual(self.status(port, headers={"Host": here, "Origin": "http://127.0.0.1:1"}), 403)
+            self.assertEqual(self.status(port, headers={"Host": here, "Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "cors"}), 403)
+            self.assertEqual(self.status(port, "POST", "/api/refresh", {"Host": here, "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "same-origin"}), 403,
+                             "an HTML form post is refused")
+
+    def test_a_listed_name_is_accepted(self):
+        with running_server() as port, patch.dict(os.environ, {"MERCATOR_ALLOWED_HOSTS": "panel.lan"}):
+            self.assertEqual(self.status(port, headers={"Host": "panel.lan"}), 200)
+            self.assertEqual(self.status(port, headers={"Host": "other.lan"}), 403)
+
+
 class NoHttpxTests(unittest.TestCase):
     def test_the_server_and_its_family_link_load_without_httpx(self):
         code = ("import sys; sys.modules['httpx'] = None\n"
