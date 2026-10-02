@@ -156,9 +156,9 @@ llm: Callable[[str, str], str | None] | None = None
 
 def _default_llm(system: str, user: str) -> str | None:
     try:
-        link_mod = __import__(mercator_family._PKG + ".link", fromlist=["Link"])
-        cfg_mod = __import__(mercator_family._PKG + ".config", fromlist=["LinkConfig"])
-    except Exception:  # noqa: BLE001 - no httpx or no vendored library: no suggestions
+        from hoard_link import config as cfg_mod
+        from hoard_link import link as link_mod
+    except Exception:  # noqa: BLE001 - no httpx (the model backend needs it): no suggestions
         return None
 
     async def run() -> str | None:
