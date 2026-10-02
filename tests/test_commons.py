@@ -294,7 +294,7 @@ class NoHttpxTests(unittest.TestCase):
             out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, timeout=60,
                                  env={**os.environ, "MERCATOR_DATA_DIR": folder, "HOARD_EVENTS": "0"})
         self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertEqual(out.stdout.split()[0], "0.8.0")
+        self.assertEqual(out.stdout.split()[0], "0.8.1")
 
     def test_caption_suggestions_say_so_when_the_model_backend_is_missing(self):
         code = ("import sys; sys.modules['httpx'] = None\n"
