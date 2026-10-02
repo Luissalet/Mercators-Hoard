@@ -1,51 +1,23 @@
-"""Small stdio MCP bridge: the publishing plan, Cults catalogue and sales tools of agent_tools.py."""
+"""Stdio MCP bridge for Mercator's Hoard: the family's ``CatalogBridge`` pointed at this app.
+
+The tool list comes from ``GET /api/agent/tools`` and every call is proxied to the running server (``POST /api/agent/call``) with the
+Bearer token from ``<data>/mcp-token``. When nothing answers it starts the server (``python -m mercator``, detached);
+MERCATOR_BRIDGE_AUTOSTART=0 turns that off. MERCATOR_URL, MERCATOR_PORT, MERCATOR_DATA_DIR, MERCATOR_TOKEN and MERCATOR_TOKEN_FILE
+tell it where the server and its token are. Needs the ``mcp`` package (``pip install -r requirements.txt``).
+"""
 
 from __future__ import annotations
 
-import json
-import sqlite3
-import sys
-
-from agent_tools import call_tool, tool_catalog
+from hoard_link.bridge import CatalogBridge
 
 
-def handle(request: dict) -> dict | None:
-    if "id" not in request:
-        return None
-    method = request.get("method")
-    params = request.get("params") or {}
-    if method == "initialize":
-        result = {"protocolVersion": params.get("protocolVersion", "2025-03-26"),
-                  "capabilities": {"tools": {"listChanged": False}},
-                  "serverInfo": {"name": "mercator-hoard", "version": "1.1.0"}}
-    elif method == "ping":
-        result = {}
-    elif method == "tools/list":
-        result = {"tools": tool_catalog()}
-    elif method == "tools/call":
-        name = params.get("name")
-        args = params.get("arguments") or {}
-        try:
-            value = call_tool(name, args)
-            result = {"content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False)}]}
-        except (ValueError, TypeError, OSError, KeyError, sqlite3.Error) as error:
-            result = {"isError": True, "content": [{"type": "text", "text": str(error)}]}
-    else:
-        return {"jsonrpc": "2.0", "id": request["id"], "error": {"code": -32601, "message": "Método desconocido"}}
-    return {"jsonrpc": "2.0", "id": request["id"], "result": result}
+def make_bridge() -> CatalogBridge:
+    return CatalogBridge(app="mercator", service="mercator-hoard", package="mercator", default_port=5195, data_dir_env="MERCATOR_DATA_DIR",
+                         title="Mercator's Hoard", root=__file__)
 
 
 def main() -> None:
-    # MCP stdio is UTF-8 even when a Windows console defaults to cp1252.
-    sys.stdin.reconfigure(encoding="utf-8")
-    sys.stdout.reconfigure(encoding="utf-8")
-    for line in sys.stdin:
-        try:
-            answer = handle(json.loads(line))
-        except (ValueError, TypeError) as error:
-            answer = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": str(error)}}
-        if answer is not None:
-            print(json.dumps(answer, ensure_ascii=False), flush=True)
+    make_bridge().run_bridge()
 
 
 if __name__ == "__main__":

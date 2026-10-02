@@ -1,0 +1,2 @@
+# Only the stdio MCP bridge (mcp_server.py) needs a package; the server and the vendored hoard_link are standard library.
+mcp>=1.10,<2

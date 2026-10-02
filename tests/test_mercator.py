@@ -12,6 +12,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import mercator
+import mercator_family
+from support import HAVE_MCP, bridge_calls, dump, running_server
 
 
 class DashboardTests(unittest.TestCase):
@@ -116,6 +118,7 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(len(result["sales"]), 1)
         self.assertEqual(result["by_currency"], [{"currency": "EUR", "income": "12.50"}, {"currency": "USD", "income": "9.00"}])
 
+    @unittest.skipUnless(HAVE_MCP, "the stdio bridge needs the mcp package")
     def test_mcp_stdio_reads_isolated_catalog_without_modifying_it(self):
         root = Path(self.temp.name) / "products"
         folder = root / "Modelo á"
@@ -123,24 +126,15 @@ class DashboardTests(unittest.TestCase):
         listing = folder / "cults3d.json"
         listing.write_text(json.dumps({"title": "Modelo á", "tags": []}), encoding="utf-8")
         before = listing.read_bytes()
-        script = Path(mercator.__file__).with_name("mcp_server.py")
-        requests = [
-            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-03-26"}},
-            {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
-            {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "mercator_catalog", "arguments": {"untagged": True}}},
-            {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "mercator_sales", "arguments": {}}},
-        ]
-        child = subprocess.run([sys.executable, str(script)], input="".join(json.dumps(row) + "\n" for row in requests),
-                               text=True, encoding="utf-8", capture_output=True, timeout=10,
-                               env={**os.environ, "PYTHONIOENCODING": "cp1252", "MERCATOR_DATA_DIR": self.temp.name, "MERCATOR_PRODUCTS_DIR": str(root)})
-        self.assertEqual(child.returncode, 0, child.stderr)
-        replies = [json.loads(line) for line in child.stdout.splitlines()]
-        self.assertEqual(replies[0]["result"]["serverInfo"]["name"], "mercator-hoard")
-        self.assertEqual(replies[1]["result"]["tools"][0]["annotations"]["readOnlyHint"], True)
-        self.assertIn("cuáles", replies[1]["result"]["tools"][0]["description"])
-        self.assertEqual(json.loads(replies[2]["result"]["content"][0]["text"])["items"][0]["tags"], 0)
-        self.assertEqual(json.loads(replies[2]["result"]["content"][0]["text"])["items"][0]["id"], "Modelo á")
-        self.assertEqual(json.loads(replies[3]["result"]["content"][0]["text"])["total"], 0)
+        mercator_family.configure(self.temp.name)
+        with patch.dict(os.environ, {"MERCATOR_PRODUCTS_DIR": str(root)}), running_server() as port:
+            answer = bridge_calls(port, self.temp.name, [("mercator_catalog", {"untagged": True}), ("mercator_sales", {})])
+        tools = answer["tools"]
+        self.assertEqual(dump(tools[0])["annotations"]["readOnlyHint"], True)
+        self.assertIn("cuáles", tools[0].description)
+        catalog = json.loads(answer["results"][0].content[0].text)
+        self.assertEqual((catalog["items"][0]["tags"], catalog["items"][0]["id"]), (0, "Modelo á"))
+        self.assertEqual(json.loads(answer["results"][1].content[0].text)["total"], 0)
         self.assertEqual(listing.read_bytes(), before)
 
 

@@ -21,6 +21,7 @@ import mercator
 import mercator_family
 import post_csv
 import publishing
+from support import HAVE_MCP, bridge_calls, dump, running_server
 
 SALES_COLUMNS = {"date": "date", "product": "product", "amount": "amount", "currency": "currency", "id": "id"}
 
@@ -502,7 +503,7 @@ class ContractTests(Base):
         self.assertEqual(self.http("POST", "/api/agent/call", {"name": "posts_list"}, token=self.token, headers={"Host": "evil.example"})[0], 403)
 
 
-class ToolCatalogueTests(unittest.TestCase):
+class ToolCatalogueTests(Base):
     def test_first_lines_fit_the_tool_index_and_read_only_tools_say_so(self):
         for tool in agent_tools.tool_catalog():
             first = tool["description"].split("\n", 1)[0]
@@ -513,23 +514,14 @@ class ToolCatalogueTests(unittest.TestCase):
         self.assertTrue({"posts_list", "post_get", "posts_stats", "sales_batch_get", "mercator_catalog", "mercator_sales"} <= read_only)
         self.assertFalse({"post_upsert", "post_publish", "post_schedule", "post_metrics_add", "catalog_from_vulcan"} & read_only)
 
+    @unittest.skipUnless(HAVE_MCP, "the stdio bridge needs the mcp package")
     def test_stdio_bridge_lists_and_runs_the_new_tools(self):
-        with tempfile.TemporaryDirectory() as data:
-            requests = [
-                {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
-                {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "post_upsert", "arguments": {"platform": "x", "title": "Hola"}}},
-                {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "posts_list", "arguments": {}}},
-                {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "post_get", "arguments": {"post_id": 77}}},
-            ]
-            script = Path(mercator.__file__).with_name("mcp_server.py")
-            child = subprocess.run([sys.executable, str(script)], input="".join(json.dumps(r) + "\n" for r in requests), text=True,
-                                   encoding="utf-8", capture_output=True, timeout=20,
-                                   env={**os.environ, "MERCATOR_DATA_DIR": data, "HOARD_EVENTS": "0"})
-            self.assertEqual(child.returncode, 0, child.stderr)
-            replies = [json.loads(line) for line in child.stdout.splitlines()]
-            self.assertIn("post_draft_from_media", {t["name"] for t in replies[0]["result"]["tools"]})
-            self.assertEqual(json.loads(replies[2]["result"]["content"][0]["text"])["posts"][0]["title"], "Hola")
-            self.assertTrue(replies[3]["result"]["isError"])
+        with running_server() as port:
+            answer = bridge_calls(port, self.data, [("post_upsert", {"platform": "x", "title": "Hola"}), ("posts_list", {}),
+                                                    ("post_get", {"post_id": 77})])
+        self.assertIn("post_draft_from_media", {t.name for t in answer["tools"]})
+        self.assertEqual(json.loads(answer["results"][1].content[0].text)["posts"][0]["title"], "Hola")
+        self.assertTrue(dump(answer["results"][2])["isError"])
 
 
 class PublishingUnitTests(unittest.TestCase):
