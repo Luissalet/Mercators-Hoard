@@ -139,7 +139,7 @@ class StoreTests(Base):
     def test_the_store_is_shared_versioned_and_waits_for_a_busy_file(self):
         store = mercator.database()
         self.assertIs(store, mercator.database())
-        self.assertEqual(store.schema_version, 2)
+        self.assertEqual(store.schema_version, 3)
         self.assertEqual(store.scalar("PRAGMA journal_mode").lower(), "wal")
         self.assertEqual(store.scalar("PRAGMA busy_timeout"), 15000)
 

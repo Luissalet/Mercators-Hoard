@@ -8,6 +8,7 @@ import re
 from typing import Any, Callable
 
 import cults_catalog
+import crm
 import mercator_family
 import publishing
 from hoard_link.agentkit import cap_result
@@ -16,7 +17,10 @@ INSTRUCTIONS = (
     "Mercator's Hoard keeps the owner's publishing plan (reels, shorts, videos, Cults3D listings), the metrics of each post, "
     "the Cults3D catalogue and the sales imported from Cults. Use posts_list / post_get to look before changing anything. "
     "Never invent metrics: post_metrics_add only records numbers the owner or a platform export gave. A post is marked "
-    "published only with post_publish (it takes the real URL). Revenue is shown per currency and is not profit."
+    "published only with post_publish (it takes the real URL). Revenue is shown per currency and is not profit. "
+    "CRM: inspect crm_list / crm_get before editing; saves require expected_revision. Deal values and probabilities "
+    "are owner estimates, won is not collected revenue. Link contacts with people_ref and documents with document_refs. "
+    "Record real interactions with crm_activity_add; never send outreach or add invented activity."
 )
 
 STRING = {"type": "string"}
@@ -324,6 +328,36 @@ TOOLS.extend([
      "annotations":{"readOnlyHint":False,"destructiveHint":False,"idempotentHint":True,"openWorldHint":True},"run":plausible_query},
     {"name":"plausible_history", "description":"Read saved website-statistics snapshots without network access. Read-only.\nLeer históricos de analítica web con consulta, fecha, origen y valores exactos.",
      "inputSchema":_schema({"project":STRING,"limit":INTEGER}),"annotations":_ann(True),"run":plausible_history},
+])
+CRM_FILTERS = {"project": STRING, "owner": STRING, "stage": {"type": "string", "enum": list(crm.STAGES)}, "company_id": STRING, "q": STRING}
+CRM_COMMON = {"id": STRING, "expected_revision": {"type": "integer", "minimum": 1}, "project": STRING, "owner": STRING, "notes": STRING, "people_ref": STRING, "source_ref": STRING}
+
+
+def _crm_save(kind, args):
+    row = _store(lambda c: crm.save(c, kind, args))
+    for ref in [row.get('people_ref', ''), row.get('source_ref', ''), *row.get('document_refs', [])]:
+        if ref:
+            mercator_family.link_ref(row['ref'], ref, 'related', from_label=row.get('name') or row.get('title', ''))
+    return {"ok": True, kind: row}
+
+
+TOOLS.extend([
+    {"name": "crm_company_save", "description": "Crear o editar una empresa/cliente con proyecto, responsable y referencia People (write).\nPara editar: id y expected_revision.",
+     "inputSchema": _schema({**CRM_COMMON, "name": STRING, "segment": STRING}), "annotations": _ann(False, False), "run": lambda a: _crm_save('company', a)},
+    {"name": "crm_deal_save", "description": "Crear o editar una oportunidad comercial: IA, desarrollo o encargo 3D (write).\nEtapas, importe estimado, probabilidad del propietario y próxima acción. Editar requiere expected_revision; ganado no es cobrado.",
+     "inputSchema": _schema({**CRM_COMMON, "company_id": STRING, "title": STRING, "stage": {"type": "string", "enum": list(crm.STAGES)}, "amount": STRING, "currency": STRING,
+                             "probability": {"type": "integer", "minimum": 0, "maximum": 100}, "next_action": STRING, "due_on": STRING, "document_refs": {"type": "array", "items": STRING, "maxItems": 30}}),
+     "annotations": _ann(False, False), "run": lambda a: _crm_save('deal', a)},
+    {"name": "crm_list", "description": "Buscar empresas y oportunidades por proyecto, etapa, responsable o texto. Read-only.\nListas paginadas; lectura local.",
+     "inputSchema": _schema({**CRM_FILTERS, "limit": {"type": "integer", "minimum": 1, "maximum": 500}, "offset": {"type": "integer", "minimum": 0}}), "annotations": _ann(True), "run": lambda a: _store(lambda c: crm.listing(c, a), write=False)},
+    {"name": "crm_get", "description": "Ficha de empresa u oportunidad con revisión, referencias e historial reciente. Read-only.\nHasta 200 actividades recientes registradas y fechas.",
+     "inputSchema": _schema({"kind": {"type": "string", "enum": ["company", "deal"]}, "id": STRING}, ["kind", "id"]), "annotations": _ann(True), "run": lambda a: _store(lambda c: crm.get(c, a['kind'], a['id']), write=False)},
+    {"name": "crm_activity_add", "description": "Anotar una interacción comercial real con fuente opcional y fecha (write).\nrequest_id evita duplicar reintentos; no envía mensajes.",
+     "inputSchema": _schema({"deal_id": STRING, "note": STRING, "source_ref": STRING, "observed_at": STRING, "request_id": STRING}, ["deal_id", "note", "request_id"]), "annotations": _ann(False, True), "run": lambda a: _store(lambda c: crm.activity_add(c, a))},
+    {"name": "crm_summary", "description": "Resumen comercial por etapa y moneda. Read-only.\nPipeline abierto y ponderado por probabilidad declarada; ganado separado de ingresos cobrados.",
+     "inputSchema": _schema(CRM_FILTERS), "annotations": _ann(True), "run": lambda a: _store(lambda c: crm.summary(c, a), write=False)},
+    {"name": "crm_export", "description": "Exportar CRM filtrado como JSON y CSV con referencias, actividades, fecha y resumen. Read-only.\nEl resultado MCP puede truncarse; para exportación completa usar la interfaz local.",
+     "inputSchema": _schema(CRM_FILTERS), "annotations": _ann(True), "run": lambda a: _store(lambda c: crm.export(c, a), write=False)},
 ])
 TOOLS_BY_NAME = {t["name"]: t for t in TOOLS}
 

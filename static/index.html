@@ -8,13 +8,16 @@
   <title>Mercator's Hoard — proyectos y ventas</title>
   <link rel="icon" type="image/png" href="/app-icon.png">
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/crm.css">
   <script src="/app.js" defer></script>
+  <script src="/analytics.js" defer></script>
+  <script src="/crm.js" defer></script>
 </head>
 <body>
   <div class="shell">
     <header class="masthead">
       <a class="wordmark" href="#inicio" aria-label="Mercator's Hoard, inicio"><span class="mark" aria-hidden="true">M</span><span>Mercator<span class="apostrophe">’s</span> Hoard</span></a>
-      <nav aria-label="Secciones"><a href="#proyectos">Proyectos</a><a href="/publicacion">Publicación</a><a href="#ventas">Ventas</a><a href="#catalogo">Catálogo</a></nav>
+      <nav aria-label="Secciones"><a href="#proyectos">Proyectos</a><a href="/publicacion">Publicación</a><a href="#crm">Clientes</a><a href="#analitica">Analítica web</a><a href="#ventas">Ventas</a><a href="#catalogo">Catálogo</a></nav>
       <button id="refresh" class="refresh" type="button"><span class="refresh-symbol" aria-hidden="true">↻</span> Actualizar datos</button>
     </header>
 
@@ -29,6 +32,36 @@
         <div id="project-list" class="project-list" aria-live="polite"><p class="loading">Cargando proyectos…</p></div>
       </section>
 
+      <section id="crm" class="panel-section" aria-labelledby="crm-title">
+        <div class="section-head"><div><h2 id="crm-title">Clientes y oportunidades</h2><p>Servicios de IA, desarrollo y encargos 3D. Sigue cada propuesta por proyecto y conserva las interacciones reales.</p></div></div>
+        <form id="crm-filters" class="crm-controls">
+          <label>Proyecto<input name="project" placeholder="Todos los proyectos" maxlength="200"></label>
+          <label>Responsable<input name="owner" placeholder="Todos" maxlength="200"></label>
+          <label>Etapa<select name="stage"><option value="">Todas</option></select></label>
+          <label>Buscar<input name="q" type="search" placeholder="Empresa u oportunidad" maxlength="200"></label>
+          <button type="submit">Filtrar</button>
+        </form>
+        <div class="crm-actions"><button id="crm-new-company" type="button">Añadir empresa</button><button id="crm-new-deal" type="button">Añadir oportunidad</button><button id="crm-export-json" type="button">Exportar JSON</button><button id="crm-export-csv" type="button">Exportar CSV</button></div>
+        <p id="crm-message" role="status" aria-live="polite"></p>
+        <div id="crm-summary" class="crm-summary"></div>
+        <div class="table-wrap" role="region" tabindex="0" aria-labelledby="crm-count"><table class="crm-table"><caption id="crm-count">Oportunidades</caption><thead><tr><th>Oportunidad / empresa</th><th>Proyecto</th><th>Etapa</th><th>Importe estimado</th><th>Próxima acción</th></tr></thead><tbody id="crm-deals"></tbody></table></div>
+        <div class="crm-actions"><button id="crm-prev" type="button">Anterior</button><span id="crm-page"></span><button id="crm-next" type="button">Siguiente</button></div>
+        <details><summary>Empresas registradas</summary><div id="crm-companies" class="crm-company-list"></div></details>
+        <div id="crm-editor" hidden></div>
+      </section>
+      <section id="analitica" class="panel-section" aria-labelledby="analytics-title">
+        <div class="section-head"><div><h2 id="analytics-title">Analítica web</h2><p>Consultas de Plausible con fuente, fecha e histórico. Configura la conexión en el servicio para consultar tu sitio.</p></div></div>
+        <form id="analytics-form" class="import-form">
+          <label>Proyecto <input name="project" value="website" required pattern="[a-zA-Z0-9_-]{1,100}"></label>
+          <label>Dominio en Plausible <input name="site_id" placeholder="mi-sitio.com" required maxlength="255"></label>
+          <label>Periodo <select name="date_range"><option value="7d">7 días</option><option value="30d" selected>30 días</option><option value="month">Este mes</option><option value="year">Este año</option></select></label>
+          <label>Agrupar por <select name="dimension"><option value="">Total</option><option value="time:day">Día</option><option value="event:page">Página</option><option value="visit:source">Fuente de tráfico</option><option value="visit:country_name">País</option></select></label>
+          <button type="submit" class="primary">Consultar y guardar</button>
+          <button type="button" id="analytics-history">Ver consultas guardadas</button>
+          <p id="analytics-status" role="status" class="form-message"></p>
+        </form>
+        <div id="analytics-results"></div>
+      </section>
       <section id="ventas" class="panel-section sales-section" aria-labelledby="sales-title">
         <div class="section-head"><div><h2 id="sales-title">Ventas en Cults</h2><p>Importa un CSV de tus ventas. Puedes repetir la importación; Mercator evita duplicados.</p></div><span id="sales-count" class="section-index">— ventas</span></div>
         <div class="sales-layout">

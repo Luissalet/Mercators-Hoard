@@ -690,4 +690,12 @@ nav a:hover,nav a:focus-visible{background:var(--hoard-elevated);color:var(--hoa
 .file-pick{border-radius:var(--hoard-radius)}
 .project-status,.badge{border-radius:var(--hoard-radius-sm)}
 th{color:var(--hoard-text-dim)}
+nav{flex-wrap:wrap;min-width:0}
+#analytics-form{display:grid;gap:1rem;max-width:640px}
+#analytics-form label{display:grid;gap:.45rem;color:var(--quiet)}
+#analytics-form input,#analytics-form select{min-width:0;width:100%;min-height:44px;padding:.65rem;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--bright)}
+#analytics-form button,#analytics-results button{min-height:44px;padding:.65rem 1rem;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--bright)}
+#analytics-form button.primary{background:var(--mint);color:var(--hoard-accent-ink)}
+#analytics-results{min-width:0;overflow-wrap:anywhere}
+#analytics-results details{padding:.8rem 0;border-top:1px solid var(--line)}
 .catalog-table thead{background:var(--hoard-deep)}

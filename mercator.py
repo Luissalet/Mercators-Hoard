@@ -27,6 +27,7 @@ if __name__ == "__main__":  # modules that ``import mercator`` must get this run
     sys.modules.setdefault("mercator", sys.modules["__main__"])
 
 import cults_catalog
+import crm
 import mercator_family
 import post_csv
 import publishing
@@ -99,7 +100,7 @@ def _add_batch_columns(conn: sqlite3.Connection) -> None:
 
 # Every step is idempotent (``IF NOT EXISTS``, a column added only when missing), so a store created by an older version, which
 # has no ``schema_version`` table, simply runs both and ends at version 2.
-MIGRATIONS = [CORE_SCHEMA + publishing.SCHEMA + cults_catalog.SCHEMA, _add_batch_columns]
+MIGRATIONS = [CORE_SCHEMA + publishing.SCHEMA + cults_catalog.SCHEMA, _add_batch_columns, crm.SCHEMA]
 
 _databases: dict[str, Database] = {}
 _databases_lock = threading.Lock()
@@ -477,6 +478,8 @@ def background_refresh(stop: threading.Event) -> None:
 
 
 STATIC_FILES = {
+    "/crm.js": ("crm.js", "text/javascript; charset=utf-8"),
+    "/crm.css": ("crm.css", "text/css; charset=utf-8"),
     "/analytics.js": ("analytics.js", "text/javascript; charset=utf-8"),
     "/": ("index.html", "text/html; charset=utf-8"), "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"), "/style.css": ("style.css", "text/css; charset=utf-8"),
@@ -493,7 +496,7 @@ def base_url() -> str:
 def agenda_provider(date_from, date_to, sphere):
     """Scheduled posts for the family agenda."""
     with reading() as conn:
-        return publishing.agenda_items(conn, date_from, date_to, base_url())
+        return publishing.agenda_items(conn, date_from, date_to, base_url()) + crm.agenda_items(conn, date_from, date_to, base_url())
 
 
 def publishing_meta() -> dict:
@@ -611,6 +614,10 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/analytics/history":
                 import agent_tools
                 self._json(200, agent_tools.call_tool("plausible_history", query, cap=False))
+            elif path in {"/api/crm", "/api/crm/get", "/api/crm/summary", "/api/crm/export"}:
+                import agent_tools
+                name = {"/api/crm": "crm_list", "/api/crm/get": "crm_get", "/api/crm/summary": "crm_summary", "/api/crm/export": "crm_export"}[path]
+                self._json(200, agent_tools.call_tool(name, query, cap=False))
             elif re.fullmatch(r"/api/posts/\d+(/media)?", path):
                 post_id = int(path.split("/")[3])
                 if path.endswith("/media"):
@@ -677,7 +684,8 @@ class Handler(BaseHTTPRequestHandler):
             self._post_agent_call()
             return
         routes = {"/api/refresh", "/api/sales/import", "/api/posts", "/api/posts/delete", "/api/posts/schedule", "/api/posts/publish",
-                  "/api/posts/metrics", "/api/posts/import/preview", "/api/posts/import", "/api/posts/caption", "/api/catalog/from-vulcan", "/api/analytics/query"}
+                  "/api/posts/metrics", "/api/posts/import/preview", "/api/posts/import", "/api/posts/caption", "/api/catalog/from-vulcan", "/api/analytics/query",
+                  "/api/crm/company", "/api/crm/deal", "/api/crm/activity"}
         if path not in routes:
             self._json(404, {"error": "No encontrado"})
             return
@@ -709,6 +717,9 @@ class Handler(BaseHTTPRequestHandler):
                 result = agent_tools.call_tool("post_caption_suggest", body, cap=False)
             elif path == "/api/analytics/query":
                 result = agent_tools.call_tool("plausible_query", body, cap=False)
+            elif path.startswith('/api/crm/'):
+                name = {"/api/crm/company": "crm_company_save", "/api/crm/deal": "crm_deal_save", "/api/crm/activity": "crm_activity_add"}[path]
+                result = agent_tools.call_tool(name, body, cap=False)
             else:
                 result = agent_tools.call_tool("catalog_from_vulcan", body, cap=False)
             self._json(200, result)
