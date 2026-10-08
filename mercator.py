@@ -477,6 +477,7 @@ def background_refresh(stop: threading.Event) -> None:
 
 
 STATIC_FILES = {
+    "/analytics.js": ("analytics.js", "text/javascript; charset=utf-8"),
     "/": ("index.html", "text/html; charset=utf-8"), "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"), "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/publicacion": ("publicacion.html", "text/html; charset=utf-8"), "/publicacion.html": ("publicacion.html", "text/html; charset=utf-8"),
@@ -607,6 +608,9 @@ class Handler(BaseHTTPRequestHandler):
                 with reading() as conn:
                     totals = publishing.stats(conn, query.get("platform", ""))
                 self._json(200, totals)
+            elif path == "/api/analytics/history":
+                import agent_tools
+                self._json(200, agent_tools.call_tool("plausible_history", query, cap=False))
             elif re.fullmatch(r"/api/posts/\d+(/media)?", path):
                 post_id = int(path.split("/")[3])
                 if path.endswith("/media"):
@@ -634,6 +638,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(404, {"error": "No encontrado"})
         except (ValueError, TypeError) as exc:
             self._json(400, {"error": str(exc)})
+        except (sqlite3.Error, OSError) as exc:
+            self._json(500, {"error": "No se pudieron leer los datos locales. Reintenta.", "code": type(exc).__name__})
 
     def _post_agent_call(self) -> None:
         import agent_tools
@@ -671,7 +677,7 @@ class Handler(BaseHTTPRequestHandler):
             self._post_agent_call()
             return
         routes = {"/api/refresh", "/api/sales/import", "/api/posts", "/api/posts/delete", "/api/posts/schedule", "/api/posts/publish",
-                  "/api/posts/metrics", "/api/posts/import/preview", "/api/posts/import", "/api/posts/caption", "/api/catalog/from-vulcan"}
+                  "/api/posts/metrics", "/api/posts/import/preview", "/api/posts/import", "/api/posts/caption", "/api/catalog/from-vulcan", "/api/analytics/query"}
         if path not in routes:
             self._json(404, {"error": "No encontrado"})
             return
@@ -701,11 +707,15 @@ class Handler(BaseHTTPRequestHandler):
                     result = {"ok": True, **post_csv.import_rows(conn, body.get("csv", ""), body.get("platform", ""), body.get("mapping", {}))}
             elif path == "/api/posts/caption":
                 result = agent_tools.call_tool("post_caption_suggest", body, cap=False)
+            elif path == "/api/analytics/query":
+                result = agent_tools.call_tool("plausible_query", body, cap=False)
             else:
                 result = agent_tools.call_tool("catalog_from_vulcan", body, cap=False)
             self._json(200, result)
         except (ValueError, TypeError, json.JSONDecodeError, KeyError) as exc:
             self._json(400, {"error": str(exc)})
+        except (sqlite3.Error, OSError) as exc:
+            self._json(500, {"error": "No se pudieron guardar los datos locales. Reintenta.", "code": type(exc).__name__})
 
     def log_message(self, fmt: str, *args: object) -> None:
         # Do not write request bodies, headers or credentials to logs.

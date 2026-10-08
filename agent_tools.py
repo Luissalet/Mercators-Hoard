@@ -216,6 +216,20 @@ def post_caption_suggest(args: dict) -> dict:
 
 # ------------------------------------------------------------------ catalogue
 
+def plausible_query(args):
+    """Read external statistics, then store the exact source response and query."""
+    import plausible_stats as stats
+    body = stats.query_body(args)
+    project = args.get('project') or 'website'
+    if not isinstance(project, str) or not re.fullmatch(r'[a-zA-Z0-9_-]{1,100}', project):
+        raise ValueError('Invalid project identifier')
+    response, origin = stats.fetch(body)
+    return _store(lambda conn: stats.capture(conn, project, body, response, origin))
+
+def plausible_history(args):
+    import plausible_stats as stats
+    return _store(lambda conn: stats.list_snapshots(conn, args.get('project',''), args.get('limit',20)))
+
 TOOLS: list[dict[str, Any]] = [
     {"name": "mercator_catalog",
      "description": "Search local Cults listings by name; find the ones without tags or listing. Read-only.\n"
@@ -304,6 +318,13 @@ TOOLS: list[dict[str, Any]] = [
                     "Trae las fichas de Vulcan al catálogo de Cults. Sinónimos: sincronizar catálogo, importar fichas de modelos.",
      "inputSchema": _schema({"folder": STRING}), "annotations": _ann(False, True), "run": catalog_from_vulcan},
 ]
+TOOLS.extend([
+    {"name":"plausible_query", "description":"Query Plausible v2 and store source-backed website statistics. Requires configured API key.\nConsultar analítica web, páginas, fuentes, conversiones y visitantes reales con procedencia.",
+     "inputSchema":_schema({"project":STRING,"site_id":STRING,"date_range":{"oneOf":[STRING,{"type":"array","items":STRING,"minItems":2,"maxItems":2}]},"metrics":{"type":"array","items":STRING},"dimensions":{"type":"array","items":STRING},"filters":{"type":"array","maxItems":50},"order_by":{"type":"array","maxItems":8},"page_size":{"type":"integer","minimum":1,"maximum":1000},"offset":{"type":"integer","minimum":0,"maximum":1000000}},["site_id"]),
+     "annotations":{"readOnlyHint":False,"destructiveHint":False,"idempotentHint":True,"openWorldHint":True},"run":plausible_query},
+    {"name":"plausible_history", "description":"Read saved website-statistics snapshots without network access. Read-only.\nLeer históricos de analítica web con consulta, fecha, origen y valores exactos.",
+     "inputSchema":_schema({"project":STRING,"limit":INTEGER}),"annotations":_ann(True),"run":plausible_history},
+])
 TOOLS_BY_NAME = {t["name"]: t for t in TOOLS}
 
 
