@@ -417,6 +417,56 @@ def draft_from_media(conn, media_ref: Any, title: Any, platform: Any = None) -> 
 
 # ---------------------------------------------------------------- statistics
 
+def compare_metrics(conn, post_id: Any, from_ts: Any, to_ts: Any) -> dict:
+    """Difference between whole snapshots at or before two UTC-normalised instants.
+
+    This is an observed change, not a sum of daily activity. Missing fields stay
+    unknown; we never fill them from an older snapshot or assume a zero baseline.
+    """
+    post = get_post(conn, post_id, metrics=False)
+    if not from_ts or not to_ts:
+        raise ValueError("from_ts y to_ts son obligatorios")
+    start, end = norm_ts(from_ts), norm_ts(to_ts)
+    if start > end:
+        raise ValueError("from_ts debe ser anterior o igual a to_ts")
+
+    def at(moment):
+        row = conn.execute(
+            "SELECT * FROM post_metrics WHERE post_id=? AND ts<=? ORDER BY ts DESC, id DESC LIMIT 1",
+            (post["id"], moment)).fetchone()
+        return _row_metric(row) if row is not None else None
+
+    before, after = at(start), at(end)
+
+    def change(a, b):
+        if a is None or b is None:
+            return {"before": a, "after": b, "delta": None, "percent_change": None,
+                    "reason": "missing_value"}
+        delta = b - a
+        return {"before": a, "after": b, "delta": delta,
+                "percent_change": round(delta / abs(a) * 100, 4) if a else None,
+                "reason": "zero_baseline" if not a else None}
+
+    metrics = {name: change((before or {}).get(name), (after or {}).get(name)) for name in METRIC_FIELDS}
+    a, b = (before or {}).get("revenue"), (after or {}).get("revenue")
+    ca, cb = (before or {}).get("currency"), (after or {}).get("currency")
+    revenue = {"before": a, "after": b, "before_currency": ca, "after_currency": cb,
+               "currency": ca if ca and ca == cb else None, "delta": None, "percent_change": None}
+    if a is None or b is None:
+        revenue["reason"] = "missing_value"
+    elif not ca or ca != cb:
+        revenue["reason"] = "currency_mismatch"
+    else:
+        exact = change(Decimal(a), Decimal(b))
+        revenue.update(delta=str(exact["delta"]), percent_change=(
+            float(exact["percent_change"]) if exact["percent_change"] is not None else None), reason=exact["reason"])
+    return {"post_id": post["id"], "ref": post["ref"], "title": post["title"], "platform": post["platform"],
+            "from_ts": start, "to_ts": end, "before_snapshot": before, "after_snapshot": after,
+            "metrics": metrics, "revenue": revenue,
+            "note": "Observed change between saved snapshots at or before each instant; not daily activity or profit. "
+                    "Missing values remain null. Negative changes may reflect corrections."}
+
+
 def _sum_money(items: list[tuple[str, str]]) -> list[dict]:
     totals: dict[str, Decimal] = {}
     for currency, amount in items:

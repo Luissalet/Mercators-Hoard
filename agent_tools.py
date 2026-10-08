@@ -113,6 +113,11 @@ def posts_stats(args: dict) -> dict:
     return {"ok": True, **_store(lambda c: publishing.stats(c, args.get("platform") or ""), write=False)}
 
 
+def post_metrics_compare(args: dict) -> dict:
+    return {"ok": True, **_store(lambda c: publishing.compare_metrics(
+        c, args.get("post_id"), args.get("from_ts"), args.get("to_ts")), write=False)}
+
+
 def post_draft_from_media(args: dict) -> dict:
     post, created = _store(lambda c: publishing.draft_from_media(c, args.get("media_ref"), args.get("title"), args.get("platform")))
     if created:
@@ -266,6 +271,18 @@ TOOLS: list[dict[str, Any]] = [
                     "Estadísticas de publicación: totales por plataforma, mejores horas y días, publicaciones que más funcionan. "
                     "Sinónimos: cuándo publicar, mejores horas, rendimiento de reels.",
      "inputSchema": _schema({"platform": PLATFORM}), "annotations": _ann(True), "run": posts_stats},
+    {"name": "post_metrics_compare",
+     "description": "Compare a post's saved metric snapshots between two instants: deltas and growth. Read-only.\n"
+                    "Latest whole snapshot at or before each instant; omitted metrics stay unknown, no backfill. "
+                    "ISO timestamps: offsets recommended; naive times use the machine's local timezone. "
+                    "Returns actual endpoint snapshots, per-metric deltas and percent change. Read-only. "
+                    "Missing values stay null; revenues are compared only in the same currency. "
+                    "Observed changes, not sums of daily activity or profit. Negative changes are preserved.\n"
+                    "Compara la evolución de una publicación entre dos fechas: visitas, interacciones, ventas e ingresos. "
+                    "Sinónimos: crecimiento, diferencia de métricas, cuánto ha subido, variación de visitas.",
+     "inputSchema": _schema({"post_id": INTEGER, "from_ts": STRING, "to_ts": STRING},
+                            ["post_id", "from_ts", "to_ts"]),
+     "annotations": _ann(True), "run": post_metrics_compare},
     {"name": "post_draft_from_media",
      "description": "Create a draft post from a media reference (render, production, model) (write).\n"
                     "Crea un borrador de publicación a partir de un vídeo o modelo de otra app. Sinónimos: preparar post del render, "
