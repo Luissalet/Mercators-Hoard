@@ -42,7 +42,7 @@ Los datos están en `data/mercator.sqlite3` (tablas `posts`, `post_metrics`, `ca
 
 Mercator sigue el contrato de la familia Hoard (`faustus-plugin.json`, `x-family`):
 
-- Herramientas por `GET /api/agent/tools` y `POST /api/agent/call` (token en `data/mcp-token`, creado en el primer arranque) y por el puente stdio: `posts_list`, `post_get`, `post_upsert`, `post_schedule`, `post_publish`, `post_metrics_add`, `posts_stats`, `post_draft_from_media {media_ref, title}`, `post_caption_suggest`, `sales_batch_get {batch}`, `catalog_from_vulcan {}` (pide a Vulcan `listings_export_catalog` y lo guarda en el catálogo de Cults; Vulcan debe estar en marcha) y las dos de abajo.
+- Herramientas por `GET /api/agent/tools` y `POST /api/agent/call` (token en `data/mcp-token`, creado en el primer arranque) y por el puente stdio: `posts_list`, `post_get`, `post_upsert`, `post_schedule`, `post_publish`, `post_metrics_add`, `post_metrics_compare`, `posts_stats`, `post_draft_from_media {media_ref, title}`, `post_caption_suggest`, `sales_batch_get {batch}`, `catalog_from_vulcan {}` (pide a Vulcan `listings_export_catalog` y lo guarda en el catálogo de Cults; Vulcan debe estar en marcha) y las dos de abajo.
 - Eventos: `mercator.post.scheduled`, `mercator.post.published`, `mercator.post.drafted`, `mercator.sales.imported {batch}` (tras importar ventas que añadieron líneas, para que una regla del hub registre el ingreso).
 - Agenda: `GET /api/family/agenda` responde con los posts programados (tipo `publish`); exige el mismo token.
 - `hoard_link/` es la biblioteca compartida, incluida sin cambios (versión 0.8). Se importa solo con la biblioteca estándar, así que el panel sigue funcionando sin instalar nada. El token (`data/mcp-token`) se crea una vez y se conserva entre arranques. Las respuestas de las herramientas para el asistente se limitan a 20 000 bytes (`truncated` dice qué se dejó fuera); la página web recibe todo. Los errores llegan como `{ok: false, error, code}`: `unknown_tool` 404, `invalid` 400 o `internal` 500.
@@ -51,6 +51,16 @@ Mercator sigue el contrato de la familia Hoard (`faustus-plugin.json`, `x-family
 
 `python mcp_server.py` es el puente MCP por stdio (el puente de catálogo común de la familia; necesita `pip install -r requirements.txt`, es decir, el paquete `mcp`). Lista las herramientas del panel en marcha y le reenvía cada llamada con el token de `data/mcp-token`; si nada responde, arranca `python -m mercator` él mismo (`MERCATOR_BRIDGE_AUTOSTART=0` lo evita; `MERCATOR_URL`, `MERCATOR_PORT`, `MERCATOR_DATA_DIR` y `MERCATOR_TOKEN_FILE` dicen dónde está el servidor). Las dos originales son de solo lectura: `mercator_catalog` busca fichas y filtra las que no tienen etiquetas o tienen archivos pendientes/dañados; `mercator_sales` consulta ventas importadas por producto y separa los totales por moneda. Hoard Hub puede usar la entrada MCP de `faustus-plugin.json`. `MERCATOR_DATA_DIR` y `MERCATOR_PRODUCTS_DIR` permiten seleccionar datos locales distintos para pruebas aisladas.
 
+## Comparar el crecimiento desde Faustus
+
+`post_metrics_compare {post_id, from_ts, to_ts}` compara la última lectura completa guardada en o antes de cada extremo. Devuelve las dos lecturas reales, diferencias y porcentajes por métrica e ingresos exactos cuando coinciden las monedas. Los datos ausentes quedan en `null`; una base cero no tiene porcentaje y las bajadas conservan su signo. Son cambios entre observaciones guardadas, no sumas de actividad diaria, analítica en directo ni beneficio. Usa fechas ISO con zona horaria; sin zona se usa la de este ordenador. Las lecturas parciales no se rellenan con valores antiguos.
+
+La herramienta reutiliza el historial local sin dependencias nuevas. Las [definiciones oficiales de métricas de YouTube](https://developers.google.com/youtube/analytics/metrics) y sus [rangos de informes](https://developers.google.com/youtube/analytics/reference/reports/query) sirvieron de referencia para distinguir observaciones de actividad por periodo; esta herramienta no consulta esas API.
+
 ## Verificar
 
 `python -m unittest discover -s tests` comprueba importación, límites de acceso y comportamiento de la lectura. El servidor está limitado a `127.0.0.1` y aplica el guardia de peticiones de la familia (`hoard_link.guard`): el `Host` debe ser local y nombrar el puerto del servidor (otros nombres, en `MERCATOR_ALLOWED_HOSTS`), el `Origin` del navegador debe ser local con el mismo puerto y se rechazan las peticiones entre sitios y los envíos de formularios; no lo expongas a la red con claves de servidor cargadas.
+
+## Ampliación de la familia · 2026-10-04
+
+`plausible_query` consulta Plausible v2 y conserva consulta, respuesta, origen y fecha; `plausible_history` recupera el historial. La pestaña Analítica usa los mismos handlers, conserva dimensiones, monedas y nulos y exporta JSON. Configura `PLAUSIBLE_API_KEY` y opcionalmente `PLAUSIBLE_URL`. Hace falta acceso API de la edición/cuenta. Admite periodos, fechas, métricas y dimensiones, hasta 1000 filas; aún no expone filtros ni páginas adicionales. No instala rastreo ni inventa métricas.
