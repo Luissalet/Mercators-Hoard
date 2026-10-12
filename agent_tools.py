@@ -333,15 +333,27 @@ CRM_FILTERS = {"project": STRING, "owner": STRING, "stage": {"type": "string", "
 CRM_COMMON = {"id": STRING, "expected_revision": {"type": "integer", "minimum": 1}, "project": STRING, "owner": STRING, "notes": STRING, "people_ref": STRING, "source_ref": STRING}
 
 
-def _crm_save(kind, args):
-    row = _store(lambda c: crm.save(c, kind, args))
+def _crm_result(kind, row):
     for ref in [row.get('people_ref', ''), row.get('source_ref', ''), *row.get('document_refs', [])]:
         if ref:
             mercator_family.link_ref(row['ref'], ref, 'related', from_label=row.get('name') or row.get('title', ''))
     return {"ok": True, kind: row}
 
 
+def _crm_save(kind, args):
+    return _crm_result(kind, _store(lambda c: crm.save(c, kind, args)))
+
+
+def _crm_patch(args):
+    return _crm_result(args['kind'], _store(lambda c: crm.patch(
+        c, args['kind'], args['id'], args['fields'])))
+
+
 TOOLS.extend([
+    {"name": "crm_patch", "description": "Apply only changed fields to an existing company or opportunity atomically; retain other current fields.\nGuardar campos cambiados sin pisar otros cambios de Faustus.",
+     "inputSchema": _schema({"kind": {"type": "string", "enum": ["company", "deal"]},
+                              "id": STRING, "fields": {"type": "object"}}, ["kind", "id", "fields"]),
+     "annotations": _ann(False, False), "run": _crm_patch},
     {"name": "crm_company_save", "description": "Crear o editar una empresa/cliente con proyecto, responsable y referencia People (write).\nPara editar: id y expected_revision.",
      "inputSchema": _schema({**CRM_COMMON, "name": STRING, "segment": STRING}), "annotations": _ann(False, False), "run": lambda a: _crm_save('company', a)},
     {"name": "crm_deal_save", "description": "Crear o editar una oportunidad comercial: IA, desarrollo o encargo 3D (write).\nEtapas, importe estimado, probabilidad del propietario y próxima acción. Editar requiere expected_revision; ganado no es cobrado.",

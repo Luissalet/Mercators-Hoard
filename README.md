@@ -44,6 +44,12 @@ Mercator follows the Hoard family contract (`faustus-plugin.json`, `x-family`):
 
 ## Ask Faustus
 
+The Faustus icon opens the shared copilot on the dashboard and publication page, including inside publication and CSV import dialogs. Chats, drafts, model calls and tools remain in Faustus. Mercator stores only its stable `data/copilot-space-id`; `MERCATOR_DATA_DIR` selects another data space. Configure the global Faustus service through HoardLink or `MERCATOR_FAUSTUS_URL`. Model reasoning uses the global Sparks service; local GPUs remain available for content generation.
+
+The panel receives the current view, real CRM/publication identifiers and unsaved editor fields. New or removed records have no active object. A completed turn refreshes lists, saved analytics and publication metrics while keeping the editor and its draft. Existing CRM and publication forms save only changed fields, so an agent's concurrent changes to other fields survive. Native `crm_patch {kind, id, fields}` performs that merge in the database transaction; existing revision-aware save tools remain available.
+
+See [the copilot API](docs/copilot.md) for the shared relay endpoints and context contract.
+
 `python mcp_server.py` is the stdio MCP bridge (the family's shared `CatalogBridge`; it needs `pip install -r requirements.txt`, i.e. the `mcp` package). It lists the tools from the running dashboard and forwards every call to it with the token in `data/mcp-token`; when nothing answers it starts `python -m mercator` itself (`MERCATOR_BRIDGE_AUTOSTART=0` disables that; `MERCATOR_URL`, `MERCATOR_PORT`, `MERCATOR_DATA_DIR`, `MERCATOR_TOKEN_FILE` say where the server is). The original two are read-only: `mercator_catalog` searches product listings and filters listings without tags or missing/invalid files; `mercator_sales` looks up imported sales by product with totals per currency. Hoard Hub can use the MCP entry in `faustus-plugin.json`. Set `MERCATOR_DATA_DIR` and `MERCATOR_PRODUCTS_DIR` in the process environment to point an isolated test or custom local store elsewhere.
 
 ## Snapshot comparison references

@@ -150,6 +150,17 @@ def save(conn, kind, args):
     return get(conn, kind, id)
 
 
+def patch(conn, kind, id, fields):
+    """Apply only supplied fields to the current row in the caller's transaction."""
+    if not isinstance(fields, dict) or {'id', 'expected_revision'} & set(fields):
+        raise ValueError('fields: objeto de campos editables requerido')
+    current = get(conn, kind, id)
+    if not fields:
+        return current
+    return save(conn, kind, {**fields, 'id': current['id'],
+                             'expected_revision': current['revision']})
+
+
 def activity_add(conn, args):
     deal = get(conn, 'deal', args['deal_id'])
     note = text(args.get('note'), 'note', 8000, True)

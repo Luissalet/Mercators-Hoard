@@ -34,6 +34,7 @@ import publishing
 from hoard_link import guard
 from hoard_link import money as hl_money
 from hoard_link.sqlkit import Database
+from hoard_link.copilot_stdlib import CopilotRelay
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get("MERCATOR_DATA_DIR") or ROOT / "data")
@@ -50,6 +51,17 @@ PROJECTS = {
     },
 }
 _refresh_lock = threading.Lock()
+_copilots = {}
+_copilots_lock = threading.Lock()
+
+
+def copilot() -> CopilotRelay:
+    # Test/custom stores must not share the identity of the production store.
+    key = str(DATA.resolve())
+    with _copilots_lock:
+        if key not in _copilots:
+            _copilots[key] = CopilotRelay('mercator', DATA, app_name="Mercator's Hoard")
+        return _copilots[key]
 
 
 def env_file(path: Path) -> dict[str, str]:
@@ -478,6 +490,7 @@ def background_refresh(stop: threading.Event) -> None:
 
 
 STATIC_FILES = {
+    "/copilot-context.js": ("copilot-context.js", "text/javascript; charset=utf-8"),
     "/crm.js": ("crm.js", "text/javascript; charset=utf-8"),
     "/crm.css": ("crm.css", "text/css; charset=utf-8"),
     "/analytics.js": ("analytics.js", "text/javascript; charset=utf-8"),
@@ -520,13 +533,27 @@ def post_media_file(post_id: int) -> tuple[Path, str] | None:
 
 class Handler(BaseHTTPRequestHandler):
     def _reply(self, code: int, body: bytes, content_type: str) -> None:
+        if content_type.startswith('text/html'):
+            body = CopilotRelay.inject_html(body)
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'")
+        self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        if self.command != 'HEAD':
+            self.wfile.write(body)
+
+    def _copilot_request(self) -> bool:
+        return urlsplit(self.path).path.startswith('/api/copilot/') and copilot().handle(self)
+
+    def do_HEAD(self) -> None:
+        if not self._trusted():
+            self._json(403, {"error": "Origen no permitido"})
+            return
+        if not self._copilot_request():
+            self._json(404, {"error": "No encontrado"})
 
     def _json(self, code: int, value: dict) -> None:
         self._reply(code, json.dumps(value, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
@@ -591,6 +618,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if not self._trusted():
             self._json(403, {"error": "Origen no permitido"})
+            return
+        if self._copilot_request():
             return
         parts = urlsplit(self.path)
         path, query = parts.path, {key: values[0] for key, values in parse_qs(parts.query).items()}
@@ -679,13 +708,15 @@ class Handler(BaseHTTPRequestHandler):
         if not self._trusted():
             self._json(403, {"error": "Origen no permitido"})
             return
+        if self._copilot_request():
+            return
         path = urlsplit(self.path).path
         if path == "/api/agent/call":
             self._post_agent_call()
             return
         routes = {"/api/refresh", "/api/sales/import", "/api/posts", "/api/posts/delete", "/api/posts/schedule", "/api/posts/publish",
                   "/api/posts/metrics", "/api/posts/import/preview", "/api/posts/import", "/api/posts/caption", "/api/catalog/from-vulcan", "/api/analytics/query",
-                  "/api/crm/company", "/api/crm/deal", "/api/crm/activity"}
+                  "/api/crm/company", "/api/crm/deal", "/api/crm/activity", "/api/crm/patch"}
         if path not in routes:
             self._json(404, {"error": "No encontrado"})
             return
@@ -717,6 +748,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = agent_tools.call_tool("post_caption_suggest", body, cap=False)
             elif path == "/api/analytics/query":
                 result = agent_tools.call_tool("plausible_query", body, cap=False)
+            elif path == '/api/crm/patch':
+                result = agent_tools.call_tool("crm_patch", body, cap=False)
             elif path.startswith('/api/crm/'):
                 name = {"/api/crm/company": "crm_company_save", "/api/crm/deal": "crm_deal_save", "/api/crm/activity": "crm_activity_add"}[path]
                 result = agent_tools.call_tool(name, body, cap=False)

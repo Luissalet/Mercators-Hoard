@@ -7,6 +7,38 @@
   let offset = 0, total = 0, busy = false, currentKind = '', current = null, activityRequest = '';
   let loadVersion = 0;
   let fieldId = 0;
+  let formBaseline = {};
+  const values = form => {
+    const fields = Object.fromEntries(new FormData(form));
+    if (currentKind === 'deal') {
+      fields.probability = Number(fields.probability);
+      fields.document_refs = fields.document_refs.split('\n').map(v => v.trim()).filter(Boolean);
+    }
+    return fields;
+  };
+  window.mercatorCopilot?.register('crm', {
+    async context() {
+      if (location.hash !== '#crm') return null;
+      const kind = currentKind, id = current?.id;
+      const form = editor.hidden ? null : editor.querySelector('form');
+      const fields = form ? window.mercatorCopilot.changed(values(form), formBaseline) : {};
+      const activity = editor.querySelectorAll('form')[1];
+      const activityFields = activity ? Object.fromEntries(new FormData(activity)) : null;
+      const filterFields = Object.fromEntries(new FormData(filters));
+      let row = null;
+      if (form && id) {
+        try { row = await request('/api/crm/get?' + new URLSearchParams({kind, id})); }
+        catch { /* A removed row is no longer an active object. Keep its local draft. */ }
+      }
+      return { active_objects: row ? [{ kind: 'crm-' + kind,
+        object_id: row.id, title: row.name || row.title }] : [],
+        view: { editor: form ? { kind: 'crm-' + kind, object_id: row?.id || null,
+          missing: Boolean(id && !row),
+          dirty: Object.keys(fields).length > 0, fields,
+          activity: activityFields } : null, filters: filterFields } };
+    },
+    refresh() { void work(load); },
+  });
   const node = (tag, text) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; return el; };
   const option = (value, text) => {const el = node('option',text); el.value=value; return el;};
   for (const [id, label] of Object.entries(labels)) filters.elements.stage.append(option(id,label));
@@ -45,7 +77,7 @@
     input.value=value??'';if(type==='number'){input.min=0;input.max=100;input.step=1;}
     if(type==='textarea')wrap.classList.add('crm-wide');wrap.append(caption,input);form.append(wrap);return input;
   }
-  async function edit(kind,id=null) {
+  async function edit(kind,id=null,previous=null) {
     let row=id?await request('/api/crm/get?'+new URLSearchParams({kind,id})):{};
     const companies=[];
     if(kind==='deal'){
@@ -53,6 +85,14 @@
       while(start<companyTotal){const page=await request('/api/crm?limit=500&offset='+start);companies.push(...page.companies);companyTotal=page.company_total;start+=500;}
       if(!companies.length)throw new Error('Añade una empresa antes de crear una oportunidad.');
     }
+    if(previous && !previous.form.isConnected) return;
+    const pending = previous ? window.mercatorCopilot.changed(values(previous.form), previous.sent) : {};
+    const active = document.activeElement;
+    const oldActivity = previous ? editor.querySelectorAll('form')[1] : null;
+    const activityFields = oldActivity ? Object.fromEntries(new FormData(oldActivity)) : null;
+    const focus = previous && (previous.form.contains(active) || oldActivity?.contains(active))
+      ? {index: oldActivity?.contains(active) ? 1 : 0, name: active.name,
+          start: active.selectionStart, end: active.selectionEnd} : null;
     currentKind=kind;current=row;activityRequest=crypto.randomUUID();editor.replaceChildren();editor.hidden=false;
     editor.append(node('h3',`${id?'Editar':'Añadir'} ${kind==='company'?'empresa':'oportunidad'}`));
     const form=node('form'),grid=node('div');grid.className='crm-fields';form.append(grid);
@@ -70,17 +110,37 @@
     field(grid,'people_ref','Contacto en People (hoard://people/…)',row.people_ref);
     field(grid,'source_ref','Fuente (referencia Hoard)',row.source_ref);field(grid,'notes','Notas',row.notes,'textarea');
     const actions=node('div');actions.className='crm-actions';const save=node('button','Guardar'),cancel=node('button','Cerrar editor');save.type='submit';save.className='primary';cancel.type='button';cancel.onclick=()=>{editor.hidden=true;editor.replaceChildren();};actions.append(save,cancel);form.append(actions);
-    form.onsubmit=e=>{e.preventDefault();void work(async()=>{const payload=Object.fromEntries(new FormData(form));if(currentKind==='deal'){payload.probability=Number(payload.probability);payload.document_refs=payload.document_refs.split('\n').map(v=>v.trim()).filter(Boolean);}if(current.id){payload.id=current.id;payload.expected_revision=current.revision;}const result=await request('/api/crm/'+currentKind,payload);await load();await edit(currentKind,result[currentKind].id);});};editor.append(form);
+    formBaseline = values(form);
+    for (const [key,value] of Object.entries(pending)) {
+      const input = form.elements.namedItem(key);
+      if(input) input.value = Array.isArray(value) ? value.join('\n') : value;
+    }
+    form.onsubmit=e=>{e.preventDefault();void work(async()=>{
+      const payload=values(form);
+      const savedKind=currentKind;
+      const result=current.id
+        ? await request('/api/crm/patch', {kind:currentKind,id:current.id,
+            fields:window.mercatorCopilot.changed(payload,formBaseline)})
+        : await request('/api/crm/'+currentKind,payload);
+      await load();await edit(savedKind,result[savedKind].id,{form,sent:payload});
+    });};editor.append(form);
     if(kind==='deal'&&id){
       editor.append(node('h3','Interacciones e historial'));
       const noteForm=node('form'),note=field(noteForm,'note','Anotar una interacción real','', 'textarea',null,true);field(noteForm,'source_ref','Fuente de la interacción (referencia Hoard)','');
       const add=node('button','Guardar interacción');add.type='submit';noteForm.append(add);
+      if(activityFields) for(const [key,value] of Object.entries(activityFields)) {
+        const input=noteForm.elements.namedItem(key);if(input) input.value=value;
+      }
       noteForm.onsubmit=e=>{e.preventDefault();void work(async()=>{await request('/api/crm/activity',{deal_id:id,...Object.fromEntries(new FormData(noteForm)),request_id:activityRequest});await edit('deal',id);});};editor.append(noteForm);
       const history=node('ul');history.className='crm-history';
       for(const activity of row.activities||[]){const li=node('li'),time=node('time',new Date(activity.observed_at).toLocaleString('es-ES'));time.dateTime=activity.observed_at;li.append(time);if(activity.kind==='change'){const details=node('details');details.append(node('summary','Cambio registrado'),node('pre',JSON.stringify(JSON.parse(activity.note),null,2)));li.append(details);}else li.append(node('p',activity.note),node('small',activity.source_ref));history.append(li);}editor.append(history);
       if((row.activities||[]).length===200)editor.append(node('p','Se muestran las 200 actividades más recientes. La exportación JSON incluye el historial completo.'));
     }
-    grid.querySelector('input,select')?.focus();
+    if(focus) {
+      const input=editor.querySelectorAll('form')[focus.index]?.elements.namedItem(focus.name);
+      input?.focus();
+      if(input && typeof focus.start==='number') input.setSelectionRange(focus.start,focus.end);
+    } else if(!previous) grid.querySelector('input,select')?.focus();
     lock(busy);
   }
   filters.onsubmit=e=>{e.preventDefault();offset=0;void work(load);};

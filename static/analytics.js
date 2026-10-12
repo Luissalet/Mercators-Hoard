@@ -1,6 +1,17 @@
 /* Uses the same handlers as the family API. Credentials remain in the service. */
 (() => {
   const form = document.querySelector('#analytics-form'), status = document.querySelector('#analytics-status'), output = document.querySelector('#analytics-results');
+  window.mercatorCopilot?.register('analytics', {
+    context() {
+      if (location.hash !== '#analitica') return null;
+      return {active_objects: [], view: {editor: {kind: 'analytics-query', object_id: null,
+        fields: Object.fromEntries(new FormData(form))}}};
+    },
+    refresh() {
+      if (location.hash === '#analitica') void work(async () => show(
+        (await request('/api/analytics/history?project=' + encodeURIComponent(form.elements.project.value))).snapshots));
+    },
+  });
   const node = (tag, text) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; return el; };
   async function request(path, body) {
     const response = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});

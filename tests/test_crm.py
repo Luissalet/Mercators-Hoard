@@ -59,6 +59,32 @@ class CRMTests(unittest.TestCase):
             outcomes = list(pool.map(write, ['won','lost']))
         self.assertEqual(outcomes.count('conflict'), 1)
 
+    def test_partial_ui_save_keeps_the_agents_other_fields(self):
+        deal = self.deal(notes='original')
+        changed = agent_tools.call_tool('crm_deal_save', {
+            'id': deal['id'], 'expected_revision': deal['revision'],
+            'notes': 'Agent notes', 'stage': 'proposal'})['deal']
+        saved = agent_tools.call_tool('crm_patch', {
+            'kind': 'deal', 'id': deal['id'], 'fields': {'title': 'User title'}})['deal']
+        self.assertEqual((saved['title'], saved['notes'], saved['stage']),
+                         ('User title', 'Agent notes', 'proposal'))
+        self.assertEqual(saved['revision'], changed['revision'] + 1)
+
+    def test_concurrent_partial_saves_keep_both_fields(self):
+        deal = self.deal()
+        def write(fields):
+            return agent_tools.call_tool('crm_patch', {
+                'kind': 'deal', 'id': deal['id'], 'fields': fields})['deal']
+        with ThreadPoolExecutor(2) as pool:
+            list(pool.map(write, [{'notes': 'Agent notes'}, {'title': 'User title'}]))
+        saved = agent_tools.call_tool('crm_get', {'kind': 'deal', 'id': deal['id']})
+        self.assertEqual((saved['notes'], saved['title']), ('Agent notes', 'User title'))
+
+    def test_partial_save_cannot_replace_identity(self):
+        with self.assertRaises(ValueError):
+            agent_tools.call_tool('crm_patch', {'kind': 'company', 'id': self.company['id'],
+                                              'fields': {'id': 'other'}})
+
     def test_decimal_summary_keeps_currencies_and_won_out_of_sales(self):
         self.deal(); self.deal(currency='USD', amount='80.00', probability=50)
         self.deal(stage='won', amount='30.00'); self.deal(stage='lost', amount='999.00')
@@ -168,3 +194,18 @@ class CRMTests(unittest.TestCase):
         wire=dump(answer['results'][0])
         self.assertFalse(wire.get('isError'))
         self.assertIn('Asistente', json.dumps(wire,ensure_ascii=False))
+
+    @unittest.skipUnless(HAVE_MCP, 'MCP package required')
+    def test_real_stdio_partial_write_retains_other_current_fields(self):
+        deal = self.deal(notes='Agent notes')
+        with running_server() as port:
+            mercator_family.configure(mercator.DATA)
+            answer = bridge_calls(port, mercator.DATA, [
+                ('crm_patch', {'kind': 'deal', 'id': deal['id'], 'fields': {'title': 'User title'}}),
+                ('crm_get', {'kind': 'deal', 'id': deal['id']})])
+        self.assertIn('crm_patch', {tool.name for tool in answer['tools']})
+        for result in answer['results']:
+            self.assertFalse(dump(result).get('isError'))
+        with mercator.reading() as conn:
+            saved = crm.get(conn, 'deal', deal['id'])
+        self.assertEqual((saved['title'], saved['notes']), ('User title', 'Agent notes'))

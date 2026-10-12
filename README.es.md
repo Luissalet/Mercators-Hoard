@@ -6,6 +6,12 @@ Panel local para seguir WatchHoard y BookHoard, las fichas de productos de Cults
 
 ## Abrir
 
+El icono de Faustus abre el copilot común en el panel y en publicación, también dentro de los editores y de la importación CSV. Faustus conserva chats, borradores, modelos y herramientas; Mercator guarda únicamente su identidad estable en `data/copilot-space-id`. `MERCATOR_DATA_DIR` elige otro espacio de datos. Configura el servicio global mediante HoardLink o `MERCATOR_FAUSTUS_URL`; el razonamiento usa las Sparks y la generación de contenido puede utilizar las GPU locales.
+
+El contexto incluye la vista, los identificadores reales de empresas, oportunidades o publicaciones y los campos sin guardar. Las altas y los registros eliminados no inventan un objeto. Al terminar un turno se actualizan las listas, consultas guardadas y métricas sin rehacer el formulario ni perder su borrador. CRM y publicación guardan sólo lo cambiado, conservando los cambios concurrentes del agente en otros campos. `crm_patch {kind, id, fields}` aplica esa combinación dentro de la transacción; siguen disponibles las herramientas anteriores con revisión.
+
+Contrato y rutas en [la API del copilot](docs/copilot.md).
+
 Desde esta carpeta, ejecuta `python mercator.py` y abre [http://127.0.0.1:5195](http://127.0.0.1:5195). También puede arrancarse desde Hoard Hub mediante `faustus-plugin.json`. El panel conserva los históricos en `data/mercator.sqlite3`, únicamente en este equipo.
 
 Al abrir Mercator, y después cada seis horas mientras siga funcionando, se consultan usuarios de Supabase Auth y peticiones/errores de Cloudflare Workers. Pulsa **Actualizar datos** para adelantar la consulta. La pantalla inicial muestra la última lectura guardada; una fuente sin acceso se marca como pendiente y no presenta como actual una cifra anterior.

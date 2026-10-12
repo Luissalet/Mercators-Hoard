@@ -4,6 +4,41 @@ const STATUS_LABELS = {idea: "Idea", draft: "Borrador", scheduled: "Programada",
 const METRIC_LABELS = {views: "Visualizaciones", likes: "Me gusta", comments: "Comentarios", shares: "Compartidos", saves: "Guardados", sales: "Ventas"};
 
 const state = {meta: null, posts: [], view: "calendar", cal: "month", cursor: new Date(), platform: "", q: "", editing: null, csv: "", preview: null};
+let formBaseline = {};
+let editorVersion = 0;
+window.mercatorCopilot?.register('publishing', {
+  async context() {
+    const open = $("#editor")?.open;
+    const id = state.editing?.id;
+    const section = state.view, platform = state.platform, query = state.q;
+    const fields = open ? window.mercatorCopilot.changed(formBody(), formBaseline) : {};
+    delete fields.post_id;
+    const metrics = Object.fromEntries(new FormData($("#metric-form")));
+    const importer = $("#importer").open;
+    const importFields = {platform: $("#import-platform").value,
+      filename: $("#import-file").files[0]?.name || null,
+      mapping: Object.fromEntries([...$("#import-mapping").querySelectorAll("select")]
+        .filter(select => select.value).map(select => [select.name, select.value]))};
+    let post = null;
+    if (open && id) {
+      try { post = (await api('/api/posts/' + id)).post; }
+      catch { /* Preserve the draft if the publication was removed elsewhere. */ }
+    }
+    return { active_objects: post ? [{kind: "post",
+      object_id: String(post.id), title: post.title}] : [],
+      view: {section, platform, query,
+        editor: importer ? {kind: "metrics-import", object_id: null,
+          dirty: Boolean(state.csv), fields: importFields} :
+          open ? {kind: "publication", object_id: post?.id || null,
+            missing: Boolean(id && !post),
+            dirty: Object.keys(fields).length > 0, fields,
+            metrics} : null} };
+  },
+  refresh() {
+    void load();
+    if ($("#editor").open && state.editing?.id) void loadMetrics(state.editing.id).catch(error => say(error.message));
+  },
+});
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -246,6 +281,7 @@ function showMedia(post) {
 }
 
 function openEditor(post, preset) {
+  editorVersion += 1;
   state.editing = post || null;
   const form = editorForm();
   form.reset();
@@ -270,6 +306,7 @@ function openEditor(post, preset) {
   if (post) loadMetrics(post.id);
   if (!$("#editor").open) $("#editor").showModal();
   if (post) history.replaceState(null, "", "#post-" + post.id);
+  formBaseline = formBody();
 }
 
 function formBody() {
@@ -282,12 +319,23 @@ function formBody() {
 
 async function savePost(extra) {
   const message = $("#editor-message");
+  const version = editorVersion;
   try {
-    const result = await api("/api/posts", {...formBody(), ...(extra || {})});
-    state.editing = result.post;
-    message.textContent = "Guardado.";
+    const body = formBody();
+    const fields = state.editing ? {...window.mercatorCopilot.changed(body, formBaseline),
+      post_id: state.editing.id} : body;
+    const result = await api("/api/posts", {...fields, ...(extra || {})});
     await load();
+    if(version !== editorVersion || !$("#editor").open) return;
+    const pending = window.mercatorCopilot.changed(formBody(),body);
+    delete pending.post_id;
+    const active = document.activeElement;
+    const selection = editorForm().contains(active)
+      ? {input:active,start:active.selectionStart,end:active.selectionEnd} : null;
     openEditor(result.post);
+    for(const [key,value] of Object.entries(pending)) field(key).value=value ?? '';
+    updateCounters();
+    if(selection && typeof selection.start==='number') selection.input.setSelectionRange(selection.start,selection.end);
     $("#editor-message").textContent = "Guardado.";
   } catch (error) { message.textContent = error.message; }
 }

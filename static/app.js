@@ -179,4 +179,17 @@ $("#refresh").addEventListener("click", async event => {
   catch (error) { $("#overall-status").textContent = error.message; }
   finally { button.disabled = false; }
 });
+window.mercatorCopilot?.register('dashboard', {
+  context() {
+    if (location.hash === '#ventas') return {active_objects: [], view: {editor: {
+      kind: 'sales-import', object_id: null, dirty: Boolean(csvText), fields: {
+        filename: $("#sales-file").files[0]?.name || null,
+        mapping: Object.fromEntries([...$("#column-mapping").querySelectorAll('select')]
+          .map(select => [select.name, select.value]))}}}};
+    if (location.hash === '#catalogo') return {active_objects: [],
+      view: {query: $("#catalog-search").value}};
+    return null;
+  },
+  refresh() { void load(); },
+});
 load();
