@@ -57,6 +57,16 @@ Mercator sigue el contrato de la familia Hoard (`faustus-plugin.json`, `x-family
 
 La herramienta reutiliza el historial local sin dependencias nuevas. Las [definiciones oficiales de métricas de YouTube](https://developers.google.com/youtube/analytics/metrics) y sus [rangos de informes](https://developers.google.com/youtube/analytics/reference/reports/query) sirvieron de referencia para distinguir observaciones de actividad por periodo; esta herramienta no consulta esas API.
 
+## Copiloto de Faustus
+
+En las páginas web, un botón flotante **Faustus** abre un panel lateral con el chat de Faustus, retransmitido por este servidor (`/api/copilot/*`; el token de Faustus se queda en el servidor). La conversación, el modelo y las herramientas viven en Faustus: la aplicación no guarda bucle de chat ni historial. El servidor usa `http.server`, así que el relé es `mercator_copilot.py` (mismas rutas y comportamiento que el compartido de FastAPI; el SSE se emite sin búfer) y necesita los módulos de copiloto del `hoard_link` incluido; sin ellos la aplicación funciona sin panel.
+
+Cada turno lleva lo que hay abierto, leído de la propia página (`static/copilot.js`): en **Proyectos** los proyectos seguidos con su estado de conexión y cifras, en **Clientes** la empresa u oportunidad abierta (id, etapa, importe, revisión) o las oportunidades filtradas, en **Analítica web** las consultas guardadas que se muestran, en **Ventas** el resumen y los productos más vendidos, en **Catálogo** la búsqueda y los productos mostrados, y en **Publicación** la publicación del editor además de la pestaña del calendario, los filtros y los recuentos. Lo que está sin guardar va en `view.editor` (formulario de oportunidad o empresa, mapeo de la importación de ventas, consulta de analítica, editor de publicación). Mercator no tiene espacios de trabajo, así que no envía `project`.
+
+Tras un turno del agente se recargan las listas y una oportunidad o publicación abierta toma la versión nueva del agente en los campos que no habías tocado; lo que escribiste se queda, y guardar envía solo los campos que cambiaste (si el agente cambió el mismo campo se conserva el tuyo y se avisa). El panel necesita estilos en línea, así que mientras el copiloto está activo la CSP de las páginas HTML es `style-src 'self' 'unsafe-inline'`; los scripts siguen en `'self'`.
+
+Se desactiva con `HOARD_COPILOT=0` (sin rutas, sin botón y con la CSP estricta). Faustus se localiza con `HOARD_FAUSTUS_URL` (o `MERCATOR_FAUSTUS_URL`, y `HOARD_FAUSTUS_TOKEN`) o con la configuración de Hoard Link.
+
 ## Verificar
 
 `python -m unittest discover -s tests` comprueba importación, límites de acceso y comportamiento de la lectura. El servidor está limitado a `127.0.0.1` y aplica el guardia de peticiones de la familia (`hoard_link.guard`): el `Host` debe ser local y nombrar el puerto del servidor (otros nombres, en `MERCATOR_ALLOWED_HOSTS`), el `Origin` del navegador debe ser local con el mismo puerto y se rechazan las peticiones entre sitios y los envíos de formularios; no lo expongas a la red con claves de servidor cargadas.

@@ -50,6 +50,16 @@ Mercator follows the Hoard family contract (`faustus-plugin.json`, `x-family`):
 
 The comparison capability reuses the local metrics history without a new dependency. [YouTube's official metric definitions](https://developers.google.com/youtube/analytics/metrics) and [report date ranges](https://developers.google.com/youtube/analytics/reference/reports/query) informed the distinction between observations and period activity; Mercator does not call those APIs for this tool.
 
+## Faustus copilot
+
+In the web pages a floating **Faustus** button opens a side panel with the Faustus chat, relayed by this server (`/api/copilot/*`; the Faustus token stays on the server). The conversation, model and tools live in Faustus: the app keeps no chat loop or history. The server speaks `http.server`, so the relay is `mercator_copilot.py` (same routes and behaviour as the shared FastAPI one; SSE is streamed without buffering) and needs the copilot modules of the vendored `hoard_link`; without them the app runs with no panel.
+
+Each turn carries what is open, read from the page itself (`static/copilot.js`): on **Projects** the tracked projects with their connection state and figures, on **Clients** the open company or deal (id, stage, amount, revision) or the filtered deals, on **Web analytics** the saved queries shown, on **Sales** the sales summary and top products, on **Catalogue** the search and the products shown, and on **Publishing** the post in the editor plus the calendar tab, filters and counts. Unsaved input goes in `view.editor` (deal and company form, sales import mapping, analytics query, post editor). Mercator has no workspaces, so no `project` is sent.
+
+After an agent turn the lists reload and an open deal or post takes the agent's newer version in the fields you had not touched; what you typed stays, and saving sends only the fields you changed (a conflict on the same field keeps yours and says so). The pages need inline styles for the panel, so the CSP of the HTML pages is `style-src 'self' 'unsafe-inline'` while the copilot is on; scripts stay `'self'`.
+
+Turn it off with `HOARD_COPILOT=0` (no routes, no button, strict CSP). Faustus is found through `HOARD_FAUSTUS_URL` (or `MERCATOR_FAUSTUS_URL`, and `HOARD_FAUSTUS_TOKEN`) or the Hoard Link config.
+
 ## Verify
 
 ```sh

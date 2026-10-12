@@ -1,5 +1,6 @@
 /* Uses the same handlers as the family API. Credentials remain in the service. */
 (() => {
+  let shown = [];
   const form = document.querySelector('#analytics-form'), status = document.querySelector('#analytics-status'), output = document.querySelector('#analytics-results');
   const node = (tag, text) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; return el; };
   async function request(path, body) {
@@ -7,6 +8,7 @@
     const data = await response.json(); if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`); return data;
   }
   function show(rows) {
+    shown = rows;
     output.replaceChildren();
     if (!rows.length) { output.append(node('p','No hay consultas guardadas.')); return; }
     for (const snapshot of rows) {
@@ -26,4 +28,11 @@
   async function work(fn) { for(const button of form.querySelectorAll('button')) button.disabled=true; status.textContent='Consultando…'; try { await fn(); status.textContent='Lectura completada.'; } catch(e) { status.textContent=e.message; } finally { for(const button of form.querySelectorAll('button')) button.disabled=false; } }
   form.onsubmit=e=>{e.preventDefault(); void work(async()=>{const fields=new FormData(form), dimension=fields.get('dimension'); show([await request('/api/analytics/query',{project:fields.get('project'),site_id:fields.get('site_id'),date_range:fields.get('date_range'),metrics:['visitors','pageviews'],dimensions:dimension?[dimension]:[]})]);});};
   document.querySelector('#analytics-history').onclick=()=>void work(async()=>show((await request('/api/analytics/history?project='+encodeURIComponent(form.elements.project.value))).snapshots));
+  const defaults = {project: 'website', site_id: '', date_range: '30d', dimension: ''};
+  if (window.hoardCopilotRegister) window.hoardCopilotRegister({
+    name: 'analytics', page: 'dashboard', sections: ['analitica'],
+    objects: () => shown.slice(0, 5).map(s => ({kind: 'analytics_snapshot', object_id: String(s.id), title: `${s.project} · ${s.query.site_id}`,
+      observed_at: s.observed_at, dimensions: s.query.dimensions, metrics: s.query.metrics, rows: s.response && s.response.results ? s.response.results.length : 0})),
+    editor: () => { const values = Object.fromEntries([...new FormData(form)].filter(([key]) => key in defaults)); return {kind: 'analytics_query', dirty: JSON.stringify(values) !== JSON.stringify(defaults), fields: values}; },
+  });
 })();

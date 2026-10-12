@@ -28,6 +28,7 @@ if __name__ == "__main__":  # modules that ``import mercator`` must get this run
 
 import cults_catalog
 import crm
+import mercator_copilot
 import mercator_family
 import post_csv
 import publishing
@@ -478,6 +479,7 @@ def background_refresh(stop: threading.Event) -> None:
 
 
 STATIC_FILES = {
+    "/copilot.js": ("copilot.js", "text/javascript; charset=utf-8"),
     "/crm.js": ("crm.js", "text/javascript; charset=utf-8"),
     "/crm.css": ("crm.css", "text/css; charset=utf-8"),
     "/analytics.js": ("analytics.js", "text/javascript; charset=utf-8"),
@@ -487,6 +489,7 @@ STATIC_FILES = {
     "/publicacion.js": ("publicacion.js", "text/javascript; charset=utf-8"), "/publicacion.css": ("publicacion.css", "text/css; charset=utf-8"),
 }
 MAX_BODY = 5_000_000
+COPILOT = None  # the Faustus copilot relay (``mercator_copilot.Copilot``), set by main(); None = no panel
 
 
 def base_url() -> str:
@@ -519,12 +522,14 @@ def post_media_file(post_id: int) -> tuple[Path, str] | None:
 
 
 class Handler(BaseHTTPRequestHandler):
-    def _reply(self, code: int, body: bytes, content_type: str) -> None:
+    def _reply(self, code: int, body: bytes, content_type: str, inline_styles: bool = False) -> None:
+        # the copilot panel and its launcher add <style> elements: only the HTML pages that carry it allow that
+        styles = "'self' 'unsafe-inline'" if inline_styles else "'self'"
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'")
+        self.send_header("Content-Security-Policy", f"default-src 'self'; style-src {styles}; script-src 'self'")
         self.end_headers()
         self.wfile.write(body)
 
@@ -595,6 +600,8 @@ class Handler(BaseHTTPRequestHandler):
         parts = urlsplit(self.path)
         path, query = parts.path, {key: values[0] for key, values in parse_qs(parts.query).items()}
         try:
+            if COPILOT is not None and path.startswith("/api/copilot/") and COPILOT.handle(self, "GET", path):
+                return
             if path == "/api/health":
                 self._json(200, {"service": "mercator-hoard", "status": "ok", "hoard_link": mercator_family.health_block()})
             elif path == "/api/summary":
@@ -640,7 +647,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._reply(200, (ROOT / "app-icon.png").read_bytes(), "image/png")
             elif path in STATIC_FILES:
                 name, content_type = STATIC_FILES[path]
-                self._reply(200, (ROOT / "static" / name).read_bytes(), content_type)
+                body = (ROOT / "static" / name).read_bytes()
+                page = content_type.startswith("text/html") and COPILOT is not None
+                self._reply(200, COPILOT.inject(body) if page else body, content_type, inline_styles=page)
             else:
                 self._json(404, {"error": "No encontrado"})
         except (ValueError, TypeError) as exc:
@@ -680,6 +689,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(403, {"error": "Origen no permitido"})
             return
         path = urlsplit(self.path).path
+        if COPILOT is not None and path.startswith("/api/copilot/") and COPILOT.handle(self, "POST", path):
+            return
         if path == "/api/agent/call":
             self._post_agent_call()
             return
@@ -737,6 +748,8 @@ def main() -> None:
     port = int(os.environ.get("MERCATOR_PORT", "5195"))
     database()
     mercator_family.configure(DATA)
+    global COPILOT
+    COPILOT = mercator_copilot.Copilot.create(DATA)   # HOARD_COPILOT=0 turns the panel off
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     stop = threading.Event()
     threading.Thread(target=background_refresh, args=(stop,), daemon=True).start()

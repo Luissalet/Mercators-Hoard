@@ -6,6 +6,7 @@
   const filters = $('#crm-filters'), editor = $('#crm-editor'), message = $('#crm-message');
   let offset = 0, total = 0, busy = false, currentKind = '', current = null, activityRequest = '';
   let loadVersion = 0;
+  let lastListing = {deals: [], deal_total: 0, company_total: 0}, baseline = {};
   let fieldId = 0;
   const node = (tag, text) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; return el; };
   const option = (value, text) => {const el = node('option',text); el.value=value; return el;};
@@ -25,6 +26,7 @@
     const version=++loadVersion, qs=query(); qs.set('offset',offset);qs.set('limit',50);
     const [listing, stats] = await Promise.all([request('/api/crm?'+qs),request('/api/crm/summary?'+query())]);
     if(version!==loadVersion)return;
+    lastListing=listing;
     total=Math.max(listing.deal_total,listing.company_total);$('#crm-count').textContent=`${listing.deal_total} oportunidades · ${listing.company_total} empresas en este filtro`;
     $('#crm-page').textContent=total ? `Página ${Math.floor(offset/50)+1} de ${Math.ceil(total/50)}` : 'Sin registros';
     const table=$('#crm-deals');table.replaceChildren();
@@ -44,6 +46,11 @@
     if(options){for(const [id,text] of options)input.append(option(id,text));}else if(type!=='textarea'){input.type=type;input.maxLength=key==='notes'?8000:key==='document_refs'?16000:1000;}
     input.value=value??'';if(type==='number'){input.min=0;input.max=100;input.step=1;}
     if(type==='textarea')wrap.classList.add('crm-wide');wrap.append(caption,input);form.append(wrap);return input;
+  }
+  function formValues(form) {
+    const values=Object.fromEntries(new FormData(form));
+    if(currentKind==='deal'){values.probability=Number(values.probability);values.document_refs=String(values.document_refs??'').split('\n').map(v=>v.trim()).filter(Boolean);}
+    return values;
   }
   async function edit(kind,id=null) {
     let row=id?await request('/api/crm/get?'+new URLSearchParams({kind,id})):{};
@@ -70,7 +77,7 @@
     field(grid,'people_ref','Contacto en People (hoard://people/…)',row.people_ref);
     field(grid,'source_ref','Fuente (referencia Hoard)',row.source_ref);field(grid,'notes','Notas',row.notes,'textarea');
     const actions=node('div');actions.className='crm-actions';const save=node('button','Guardar'),cancel=node('button','Cerrar editor');save.type='submit';save.className='primary';cancel.type='button';cancel.onclick=()=>{editor.hidden=true;editor.replaceChildren();};actions.append(save,cancel);form.append(actions);
-    form.onsubmit=e=>{e.preventDefault();void work(async()=>{const payload=Object.fromEntries(new FormData(form));if(currentKind==='deal'){payload.probability=Number(payload.probability);payload.document_refs=payload.document_refs.split('\n').map(v=>v.trim()).filter(Boolean);}if(current.id){payload.id=current.id;payload.expected_revision=current.revision;}const result=await request('/api/crm/'+currentKind,payload);await load();await edit(currentKind,result[currentKind].id);});};editor.append(form);
+    form.onsubmit=e=>{e.preventDefault();void work(async()=>{let payload=formValues(form);if(current.id){payload=Object.fromEntries(Object.entries(payload).filter(([key,value])=>JSON.stringify(value)!==JSON.stringify(baseline[key])));payload.id=current.id;payload.expected_revision=current.revision;}const result=await request('/api/crm/'+currentKind,payload);await load();await edit(currentKind,result[currentKind].id);});};editor.append(form);baseline=formValues(form);
     if(kind==='deal'&&id){
       editor.append(node('h3','Interacciones e historial'));
       const noteForm=node('form'),note=field(noteForm,'note','Anotar una interacción real','', 'textarea',null,true);field(noteForm,'source_ref','Fuente de la interacción (referencia Hoard)','');
@@ -89,5 +96,39 @@
   $('#crm-prev').onclick=()=>{offset=Math.max(0,offset-50);void work(load);};
   $('#crm-next').onclick=()=>{offset+=50;void work(load);};
   for(const format of ['json','csv'])$('#crm-export-'+format).onclick=()=>void work(async()=>{const data=await request('/api/crm/export?'+query());const payload=format==='csv'?'\ufeff'+data.csv:JSON.stringify(data,null,2),url=URL.createObjectURL(new Blob([payload],{type:format==='csv'?'text/csv;charset=utf-8':'application/json'})),a=node('a');a.href=url;a.download='mercator-crm.'+format;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+  /* An agent turn may have changed the open record: take its newer revision and its changes in the fields that were not
+     touched here; what was typed here stays (and is the only thing a save sends). */
+  async function reconcile() {
+    if(editor.hidden||!current||!current.id)return;
+    const form=editor.querySelector('form');if(!form)return;
+    const fresh=await request('/api/crm/get?'+new URLSearchParams({kind:currentKind,id:current.id}));
+    if(fresh.revision===current.revision)return;
+    const mine=formValues(form),clash=[];
+    for(const element of form.elements){
+      const key=element.name;if(!key||!(key in baseline))continue;
+      const theirs=key==='document_refs'?(fresh.document_refs||[]):key==='probability'?Number(fresh.probability):(fresh[key]??'');
+      const edited=JSON.stringify(mine[key])!==JSON.stringify(baseline[key]);
+      if(!edited){element.value=Array.isArray(theirs)?theirs.join('\n'):theirs;baseline[key]=theirs;}
+      else if(JSON.stringify(theirs)!==JSON.stringify(baseline[key]))clash.push(key);
+    }
+    current=fresh;
+    if(clash.length)message.textContent='El asistente también cambió: '+clash.join(', ')+'. Se conserva lo que has escrito.';
+  }
+  if(window.hoardCopilotRegister)window.hoardCopilotRegister({
+    name:'crm',page:'dashboard',sections:['crm'],
+    objects:()=>{
+      if(!editor.hidden&&current&&current.id)return[{kind:currentKind==='deal'?'crm_deal':'crm_company',object_id:current.id,title:current.title||current.name||'',company:current.company_name,stage:current.stage,amount:current.amount,currency:current.currency,revision:current.revision,next_action:current.next_action||undefined,due_on:current.due_on||undefined}];
+      if(!editor.hidden)return[];
+      return lastListing.deals.slice(0,10).map(row=>({kind:'crm_deal',object_id:row.id,title:row.title,company:row.company_name,stage:row.stage,amount:row.amount,currency:row.currency}));
+    },
+    view:()=>({crm:{filters:Object.fromEntries(query()),offset,deals_total:lastListing.deal_total,companies_total:lastListing.company_total,editing:editor.hidden?null:currentKind}}),
+    editor:()=>{
+      if(editor.hidden)return null;
+      const form=editor.querySelector('form');if(!form)return null;
+      const values=formValues(form);
+      return{kind:currentKind==='deal'?'crm_deal':'crm_company',dirty:JSON.stringify(values)!==JSON.stringify(baseline),fields:{...(current.id?{id:current.id,expected_revision:current.revision}:{}),...values}};
+    },
+    refresh:()=>{load().catch(()=>{});reconcile().catch(()=>{});},
+  });
   void work(load);
 })();

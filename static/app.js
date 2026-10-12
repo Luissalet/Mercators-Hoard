@@ -180,3 +180,38 @@ $("#refresh").addEventListener("click", async event => {
   finally { button.disabled = false; }
 });
 load();
+
+if (window.hoardCopilotRegister) {
+  const catalogMatches = () => {
+    if (!dashboard) return [];
+    const term = $("#catalog-search").value.trim().toLocaleLowerCase("es");
+    return dashboard.catalog.items.filter(item => item.title.toLocaleLowerCase("es").includes(term) || item.id.toLocaleLowerCase("es").includes(term));
+  };
+  window.hoardCopilotRegister({
+    name: "projects", page: "dashboard", sections: ["proyectos"],
+    objects: () => !dashboard ? [] : dashboard.projects.map(project => {
+      const auth = status(dashboard, project.id, "supabase"), cloud = status(dashboard, project.id, "cloudflare");
+      const value = (source, name, sourceStatus) => { const item = metric(dashboard, project.id, source, name); return item && sourceStatus?.state === "ok" ? item.value : null; };
+      return {kind: "tracked_project", object_id: project.id, title: project.name, worker: project.worker,
+        sources_connected: [auth, cloud].filter(item => item?.state === "ok").length,
+        users_total: value("supabase", "users_total", auth), signups_30d: value("supabase", "signups_30d", auth),
+        requests_7d: value("cloudflare", "requests_7d", cloud), errors_7d: value("cloudflare", "errors_7d", cloud)};
+    }),
+    refresh: () => load(),
+  });
+  window.hoardCopilotRegister({
+    name: "sales", page: "dashboard", sections: ["ventas"],
+    objects: () => !dashboard || !dashboard.sales_count ? [] : [{
+      kind: "sales_summary", object_id: "cults-sales", title: "Ventas en Cults", sales: dashboard.sales_count,
+      last_import: dashboard.last_sales_import ? dashboard.last_sales_import.imported_at : null,
+      top_products: dashboard.product_sales.slice(0, 5).map(row => ({product: row.product, sales: row.sales, income: row.income, currency: row.currency}))}],
+    editor: () => ({kind: "sales_import", dirty: Boolean(csvText), fields: {
+      file: $("#file-label").textContent, rows_loaded: csvText ? Math.max(0, csvText.split(/\r?\n/).filter(Boolean).length - 1) : 0,
+      columns: Object.fromEntries([...$("#column-mapping").querySelectorAll("select")].map(select => [select.name, select.value]))}}),
+  });
+  window.hoardCopilotRegister({
+    name: "catalog", page: "dashboard", sections: ["catalogo"],
+    objects: () => catalogMatches().slice(0, 8).map(item => ({kind: "catalog_item", object_id: item.id, title: item.title, has_listing: Boolean(item.has_listing)})),
+    view: () => ({catalog: {search: $("#catalog-search").value, matches: catalogMatches().length}}),
+  });
+}

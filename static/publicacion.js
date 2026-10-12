@@ -4,6 +4,7 @@ const STATUS_LABELS = {idea: "Idea", draft: "Borrador", scheduled: "Programada",
 const METRIC_LABELS = {views: "Visualizaciones", likes: "Me gusta", comments: "Comentarios", shares: "Compartidos", saves: "Guardados", sales: "Ventas"};
 
 const state = {meta: null, posts: [], view: "calendar", cal: "month", cursor: new Date(), platform: "", q: "", editing: null, csv: "", preview: null};
+let stored = null, opened = null; // the editor form as the saved post shows it / as it was opened (a save sends only the difference)
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -245,22 +246,26 @@ function showMedia(post) {
   } else box.append(el("p", "ref", ref.startsWith("hoard://") ? `Referencia de otra app: ${ref}` : "La vista previa aparece al guardar."));
 }
 
+// The editor's fields as strings, the way formBody() reads them back.
+function formValues(values) {
+  return {platform: values.platform, status: values.status, title: values.title || "", caption: values.caption || "",
+    hashtags: (values.hashtags || []).map(t => "#" + t).join(" "), media_ref: values.media_ref || "",
+    scheduled_at: toLocalInput(values.scheduled_at) || null, published_at: toLocalInput(values.published_at) || null,
+    url: values.url || "", notes: values.notes || ""};
+}
+function applyValues(values) {
+  for (const [key, value] of Object.entries(formValues(values))) field(key).value = value ?? "";
+}
+
 function openEditor(post, preset) {
   state.editing = post || null;
   const form = editorForm();
   form.reset();
   const values = post || {platform: state.platform || "instagram_reel", status: "idea", hashtags: [], ...(preset || {})};
-  if (post && preset) Object.assign(values, preset);
-  field("platform").value = values.platform;
-  field("status").value = values.status;
-  field("title").value = values.title || "";
-  field("caption").value = values.caption || "";
-  field("hashtags").value = (values.hashtags || []).map(t => "#" + t).join(" ");
-  field("media_ref").value = values.media_ref || "";
-  field("scheduled_at").value = toLocalInput(values.scheduled_at);
-  field("published_at").value = toLocalInput(values.published_at);
-  field("url").value = values.url || "";
-  field("notes").value = values.notes || "";
+  applyValues(values);
+  stored = post ? formBody() : null;
+  if (post && preset) applyValues({...post, ...preset});
+  opened = formBody();
   $("#editor-title").textContent = post ? `Publicación #${post.id}` : "Nueva publicación";
   $("#editor-message").textContent = "";
   $("#suggestions").hidden = true;
@@ -280,10 +285,19 @@ function formBody() {
   return body;
 }
 
+// An existing post is saved with only the fields that changed here, so what an agent changed meanwhile is not overwritten.
+function changedBody() {
+  const body = formBody();
+  if (!state.editing || !stored) return body;
+  const changed = {post_id: body.post_id};
+  for (const key of Object.keys(body)) if (JSON.stringify(body[key]) !== JSON.stringify(stored[key])) changed[key] = body[key];
+  return changed;
+}
+
 async function savePost(extra) {
   const message = $("#editor-message");
   try {
-    const result = await api("/api/posts", {...formBody(), ...(extra || {})});
+    const result = await api("/api/posts", {...changedBody(), ...(extra || {})});
     state.editing = result.post;
     message.textContent = "Guardado.";
     await load();
@@ -483,3 +497,38 @@ function openFromHash() {
 
 wire();
 load().then(openFromHash);
+
+/* An agent turn may have changed the post being edited: take its newer version and its changes in the fields that were not
+   touched here; what was typed here stays (and is what a save sends). */
+async function reconcileEditor() {
+  if (!$("#editor").open || !state.editing || !stored) return;
+  const fresh = (await api("/api/posts/" + state.editing.id)).post;
+  if (fresh.updated_at === state.editing.updated_at) return;
+  const theirs = formValues(fresh), mine = formBody(), clash = [];
+  for (const key of Object.keys(theirs)) {
+    const edited = JSON.stringify(mine[key]) !== JSON.stringify(stored[key]);
+    if (!edited) { field(key).value = theirs[key] ?? ""; stored[key] = theirs[key]; }
+    else if (JSON.stringify(theirs[key]) !== JSON.stringify(stored[key])) clash.push(key);
+  }
+  state.editing = fresh;
+  updateCounters(); showMedia(fresh);
+  if (clash.length) $("#editor-message").textContent = "El asistente también cambió: " + clash.join(", ") + ". Se conserva lo que has escrito.";
+}
+
+if (window.hoardCopilotRegister) window.hoardCopilotRegister({
+  name: "publicacion", page: "publicacion",
+  objects: () => {
+    if (!$("#editor").open || !state.editing) return [];
+    const post = state.editing;
+    return [{kind: "post", object_id: String(post.id), title: post.title, platform: post.platform, status: post.status,
+      scheduled_at: post.scheduled_at, published_at: post.published_at, url: post.url || undefined, ref: post.ref}];
+  },
+  view: () => ({publication: {tab: state.view, calendar: state.cal, cursor: dayKey(state.cursor), platform: state.platform, search: state.q,
+    posts_total: state.posts.length, posts_shown: state.meta ? filtered().length : 0, editor_open: $("#editor").open}}),
+  editor: () => {
+    if (!$("#editor").open) return null;
+    const body = formBody(), base = state.editing ? stored : opened;
+    return {kind: "post", dirty: Boolean(base) && JSON.stringify(body) !== JSON.stringify(base), fields: body};
+  },
+  refresh: () => { load().then(reconcileEditor).catch(() => {}); },
+});
