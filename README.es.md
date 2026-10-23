@@ -1,5 +1,14 @@
 # Mercator's Hoard
 
+Desde **Publicación → Calendario**, **Descargar programadas (.ics)** exporta
+las publicaciones programadas de las celdas visibles y los filtros actuales
+de plataforma y búsqueda. Importa la copia en tu agenda; no sincroniza ni
+publica. Las fechas sin hora son eventos de día completo, los desfases
+explícitos conservan su instante en UTC y las horas sin zona mantienen la
+hora local en la agenda de destino. La herramienta MCP de solo lectura
+`posts_calendar_export` devuelve una URL local para descargar el archivo
+completo. [Formato y API](docs/calendar-export.md).
+
 [English](README.md)
 
 Panel local para seguir WatchHoard y BookHoard, las fichas de productos de Cults y las ventas que importes desde Cults.
