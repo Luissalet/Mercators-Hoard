@@ -715,7 +715,7 @@ class Handler(BaseHTTPRequestHandler):
             self._post_agent_call()
             return
         routes = {"/api/refresh", "/api/sales/import", "/api/posts", "/api/posts/delete", "/api/posts/schedule", "/api/posts/publish",
-                  "/api/posts/metrics", "/api/posts/import/preview", "/api/posts/import", "/api/posts/caption", "/api/catalog/from-vulcan", "/api/analytics/query",
+                  "/api/posts/metrics", "/api/posts/metrics/compare", "/api/posts/import/preview", "/api/posts/import", "/api/posts/caption", "/api/catalog/from-vulcan", "/api/analytics/query",
                   "/api/crm/company", "/api/crm/deal", "/api/crm/activity", "/api/crm/patch"}
         if path not in routes:
             self._json(404, {"error": "No encontrado"})
@@ -739,6 +739,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = agent_tools.call_tool("post_publish", body, cap=False)
             elif path == "/api/posts/metrics":
                 result = agent_tools.call_tool("post_metrics_add", body, cap=False)
+            elif path == "/api/posts/metrics/compare":
+                result = agent_tools.call_tool("post_metrics_compare", body, cap=False)
             elif path == "/api/posts/import/preview":
                 result = {"ok": True, **post_csv.preview(body.get("csv", ""), body.get("platform", ""))}
             elif path == "/api/posts/import":

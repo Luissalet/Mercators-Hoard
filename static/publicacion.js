@@ -6,6 +6,9 @@ const METRIC_LABELS = {views: "Visualizaciones", likes: "Me gusta", comments: "C
 const state = {meta: null, posts: [], view: "calendar", cal: "month", cursor: new Date(), platform: "", q: "", editing: null, csv: "", preview: null};
 let formBaseline = {};
 let editorVersion = 0;
+let comparisonPost = null;
+let comparisonRows = [];
+let comparisonRequest = 0;
 window.mercatorCopilot?.register('publishing', {
   async context() {
     const open = $("#editor")?.open;
@@ -32,7 +35,8 @@ window.mercatorCopilot?.register('publishing', {
           open ? {kind: "publication", object_id: post?.id || null,
             missing: Boolean(id && !post),
             dirty: Object.keys(fields).length > 0, fields,
-            metrics} : null} };
+            metrics, comparison: {from: $("#compare-from").value, to: $("#compare-to").value,
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone}} : null} };
   },
   refresh() {
     void load();
@@ -300,8 +304,12 @@ function openEditor(post, preset) {
   $("#editor-title").textContent = post ? `Publicación #${post.id}` : "Nueva publicación";
   $("#editor-message").textContent = "";
   $("#suggestions").hidden = true;
-  for (const id of ["delete-post", "publish-post"]) $("#" + id).hidden = !post;
+  for (const id of ["delete-post", "publish-post", "editor-metrics"]) $("#" + id).hidden = !post;
   $("#metrics-box").hidden = !post;
+  comparisonRequest += 1;
+  $("#compare-result").hidden = true;
+  $(".metric-comparison").removeAttribute("aria-busy");
+  $("#compare-message").textContent = "Cargando lecturas…";
   updateCounters(); showMedia(post);
   if (post) loadMetrics(post.id);
   if (!$("#editor").open) $("#editor").showModal();
@@ -341,7 +349,9 @@ async function savePost(extra) {
 }
 
 async function loadMetrics(postId) {
+  const version = editorVersion;
   const data = await api(`/api/posts/${postId}`);
+  if (version !== editorVersion || state.editing?.id !== postId) return;
   const rows = data.post.metrics;
   const body = $("#metric-rows"); body.replaceChildren();
   for (const m of rows.slice().reverse()) {
@@ -356,6 +366,74 @@ async function loadMetrics(postId) {
   const pick = $("#metric-pick");
   if (!pick.options.length) for (const [key, label] of Object.entries(METRIC_LABELS)) pick.append(new Option(label, key));
   drawChart(rows, pick.value || "views");
+  comparisonRows = rows;
+  const changedPost = comparisonPost !== postId;
+  comparisonPost = postId;
+  $("#compare-form").hidden = !rows.length;
+  if (!rows.length) {
+    comparisonRequest += 1;
+    $(".metric-comparison").removeAttribute("aria-busy");
+    $("#compare-result").hidden = true;
+    $("#compare-message").textContent = "Añade lecturas aquí o impórtalas desde CSV para comparar su evolución.";
+  } else {
+    if (changedPost || !$("#compare-from").value || !$("#compare-to").value) setComparisonRange();
+    await compareMetrics();
+  }
+}
+
+function setComparisonRange() {
+  function localDateTime(ts) {
+    const date = new Date(ts);
+    return `${dayKey(date)}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  }
+  if (!comparisonRows.length) return;
+  $("#compare-from").value = localDateTime(comparisonRows[0].ts);
+  $("#compare-to").value = localDateTime(comparisonRows[comparisonRows.length - 1].ts);
+}
+
+async function compareMetrics() {
+  const request = ++comparisonRequest, postId = state.editing?.id, version = editorVersion;
+  const result = $("#compare-result"), message = $("#compare-message"), section = $(".metric-comparison");
+  result.hidden = true;
+  section.removeAttribute("aria-busy");
+  const from = new Date($("#compare-from").value), to = new Date($("#compare-to").value);
+  if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from > to) {
+    message.textContent = "Elige dos fechas válidas; la fecha final debe ser igual o posterior a la inicial.";
+    return;
+  }
+  message.textContent = "Comparando lecturas…";
+  section.setAttribute("aria-busy", "true");
+  try {
+    const data = await api("/api/posts/metrics/compare", {post_id: postId, from_ts: from.toISOString(), to_ts: to.toISOString()});
+    if (request !== comparisonRequest || version !== editorVersion || state.editing?.id !== postId) return;
+    function reading(snapshot) {
+      return snapshot ? `${new Date(snapshot.ts).toLocaleString("es-ES", {dateStyle: "medium", timeStyle: "long"})} · #${snapshot.id}` : "Sin lectura anterior a esta fecha";
+    }
+    $("#compare-before").textContent = reading(data.before_snapshot);
+    $("#compare-after").textContent = reading(data.after_snapshot);
+    const body = $("#compare-rows"); body.replaceChildren();
+    for (const [key, label] of [...Object.entries(METRIC_LABELS), ["revenue", "Ingresos"]]) {
+      const value = key === "revenue" ? data.revenue : data.metrics[key];
+      const format = (amount, currency) => amount == null ? "Sin dato" : key === "revenue" ? money(amount, currency) : number(amount);
+      const signed = (amount, currency) => `${Number(amount) > 0 ? "+" : ""}${format(amount, currency)}`;
+      const delta = value.delta == null ? value.reason === "currency_mismatch" ? "Distinta moneda" : "Sin dato" : signed(value.delta, value.currency);
+      const percent = value.percent_change == null ? value.reason === "zero_baseline" ? "Base cero" : "—" : `${value.percent_change > 0 ? "+" : ""}${new Intl.NumberFormat("es-ES", {maximumFractionDigits: 2}).format(value.percent_change)} %`;
+      const row = el("tr"), heading = el("th", "", label); heading.scope = "row"; row.append(heading);
+      const trend = value.delta == null || Number(value.delta) === 0 ? "" : Number(value.delta) > 0 ? "increase" : "decrease";
+      for (const [text, className] of [[format(value.before, value.before_currency), ""], [format(value.after, value.after_currency), ""], [delta, trend], [percent, trend]]) row.append(el("td", className, text));
+      body.append(row);
+    }
+    message.textContent = !data.before_snapshot || !data.after_snapshot
+      ? "Falta una lectura para alguna de las fechas. Elige otra fecha o añade una lectura."
+      : data.before_snapshot.id === data.after_snapshot.id
+        ? "Ambas fechas utilizan la misma lectura. Añade otra lectura o amplía el intervalo para ver crecimiento."
+        : "Los datos ausentes siguen como «Sin dato». Una base cero no tiene cambio porcentual.";
+    result.hidden = false;
+  } catch (error) {
+    if (request === comparisonRequest && version === editorVersion) message.textContent = error.message;
+  } finally {
+    if (request === comparisonRequest) section.removeAttribute("aria-busy");
+  }
 }
 
 function drawChart(rows, key) {
@@ -468,6 +546,10 @@ function wire() {
   $("#filter-q").addEventListener("input", event => { state.q = event.target.value; render(); });
   $("#new-post").addEventListener("click", () => openEditor(null));
   $("#editor-close").addEventListener("click", () => $("#editor").close());
+  $("#editor-metrics").addEventListener("click", () => {
+    $("#metrics-box").scrollIntoView({block: "start"});
+    $("#metrics-title").focus({preventScroll: true});
+  });
   $("#editor").addEventListener("close", () => { if (location.hash.startsWith("#post-")) history.replaceState(null, "", location.pathname); });
   $("#import-platform").addEventListener("change", () => { $("#import-platform").dataset.touched = "1"; });
   for (const name of ["platform", "title", "caption", "hashtags"]) field(name).addEventListener("input", updateCounters);
@@ -506,6 +588,8 @@ function wire() {
     } catch (error) { message.textContent = error.message; list.hidden = true; }
   });
   $("#metric-pick").addEventListener("change", () => { if (state.editing) loadMetrics(state.editing.id); });
+  $("#compare-form").addEventListener("submit", event => { event.preventDefault(); void compareMetrics(); });
+  $("#compare-all").addEventListener("click", () => { setComparisonRange(); void compareMetrics(); });
   $("#metric-form").addEventListener("submit", async event => {
     event.preventDefault();
     const form = event.currentTarget, body = {post_id: state.editing.id}, message = $("#metric-message");

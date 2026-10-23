@@ -59,6 +59,8 @@ Mercator sigue el contrato de la familia Hoard (`faustus-plugin.json`, `x-family
 
 ## Comparar el crecimiento desde Faustus
 
+También puedes abrir una publicación guardada y pulsar **Métricas** en la cabecera del editor. En **Comparar crecimiento**, elige las fechas inicial y final en la zona horaria de tu navegador o pulsa **Primera a última**. La tabla muestra las lecturas utilizadas, seis métricas e ingresos, cambios con signo y porcentajes. Explica los datos ausentes, las bases cero y las monedas distintas. La página usa el mismo cálculo que Faustus mediante `POST /api/posts/metrics/compare`; consultar una comparación no modifica las lecturas.
+
 `post_metrics_compare {post_id, from_ts, to_ts}` compara la última lectura completa guardada en o antes de cada extremo. Devuelve las dos lecturas reales, diferencias y porcentajes por métrica e ingresos exactos cuando coinciden las monedas. Los datos ausentes quedan en `null`; una base cero no tiene porcentaje y las bajadas conservan su signo. Son cambios entre observaciones guardadas, no sumas de actividad diaria, analítica en directo ni beneficio. Usa fechas ISO con zona horaria; sin zona se usa la de este ordenador. Las lecturas parciales no se rellenan con valores antiguos.
 
 La herramienta reutiliza el historial local sin dependencias nuevas. Las [definiciones oficiales de métricas de YouTube](https://developers.google.com/youtube/analytics/metrics) y sus [rangos de informes](https://developers.google.com/youtube/analytics/reference/reports/query) sirvieron de referencia para distinguir observaciones de actividad por periodo; esta herramienta no consulta esas API.

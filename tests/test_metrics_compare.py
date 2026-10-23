@@ -3,6 +3,8 @@ from test_publishing import Base
 from support import HAVE_MCP, bridge_calls, dump, running_server
 import unittest
 import agent_tools
+import json
+from http.client import HTTPConnection
 
 
 class CompareTests(Base):
@@ -76,6 +78,25 @@ class CompareTests(Base):
             self.call("post_metrics_compare", post_id=999, from_ts="2026-10-01", to_ts="2026-10-02")
         tool = next(t for t in agent_tools.tool_catalog() if t["name"] == "post_metrics_compare")
         self.assertTrue(tool["annotations"]["readOnlyHint"])
+
+    def test_browser_route_reuses_comparison_without_changing_readings(self):
+        self.add("2026-10-01T10:00:00Z", views=100, revenue="10.10", currency="EUR")
+        self.add("2026-10-02T10:00:00Z", views=130, revenue="12.50", currency="EUR")
+        before = self.call("post_get", post_id=self.post)
+        args = dict(post_id=self.post, from_ts="2026-10-01T10:00:00Z", to_ts="2026-10-02T10:00:00Z")
+        with running_server() as port:
+            conn = HTTPConnection("127.0.0.1", port)
+            try:
+                for payload, status in ((args, 200), ({**args, "to_ts": "invalid"}, 400)):
+                    conn.request("POST", "/api/posts/metrics/compare", json.dumps(payload), {"Content-Type": "application/json"})
+                    response = conn.getresponse()
+                    result = json.loads(response.read())
+                    self.assertEqual(response.status, status)
+                    if status == 200:
+                        self.assertEqual(result, self.compare())
+            finally:
+                conn.close()
+        self.assertEqual(before, self.call("post_get", post_id=self.post))
 
     @unittest.skipUnless(HAVE_MCP, "mcp package unavailable")
     def test_real_mcp_transport(self):

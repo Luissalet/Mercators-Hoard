@@ -71,7 +71,7 @@
 
   <dialog id="editor" aria-labelledby="editor-title">
     <form id="editor-form" method="dialog">
-      <div class="dlg-head"><h2 id="editor-title">Publicación</h2><button type="button" id="editor-close" class="ghost" aria-label="Cerrar">×</button></div>
+      <div class="dlg-head"><h2 id="editor-title">Publicación</h2><button type="button" id="editor-metrics" class="ghost">Métricas</button><button type="button" id="editor-close" class="ghost" aria-label="Cerrar">×</button></div>
       <div class="dlg-body">
         <div class="cols">
           <label>Plataforma <select name="platform" required></select></label>
@@ -101,7 +101,29 @@
     </form>
     <div>
       <section id="metrics-box" class="metrics-box" hidden>
-        <h3>Métricas de esta publicación</h3>
+        <h3 id="metrics-title" tabindex="-1">Métricas de esta publicación</h3>
+        <section class="metric-comparison" aria-labelledby="compare-title">
+          <h4 id="compare-title">Comparar crecimiento</h4>
+          <p class="comparison-note" id="compare-help">Elige dos fechas. Se usa la última lectura guardada anterior o igual a cada fecha. El cambio no representa actividad diaria ni beneficio.</p>
+          <form id="compare-form" class="compare-form" aria-describedby="compare-help">
+            <label>Fecha inicial <input id="compare-from" type="datetime-local" step="1" required></label>
+            <label>Fecha final <input id="compare-to" type="datetime-local" step="1" required></label>
+            <button type="submit" class="ghost">Comparar</button>
+            <button type="button" class="ghost" id="compare-all">Primera a última</button>
+          </form>
+          <p id="compare-message" class="form-message" role="status"></p>
+          <div id="compare-result" hidden>
+            <dl class="comparison-readings">
+              <div><dt>Lectura inicial utilizada</dt><dd id="compare-before"></dd></div>
+              <div><dt>Lectura final utilizada</dt><dd id="compare-after"></dd></div>
+            </dl>
+            <div class="table-wrap"><table class="comparison-table">
+              <caption>Cambios entre las dos lecturas</caption>
+              <thead><tr><th scope="col">Métrica</th><th scope="col">Inicio</th><th scope="col">Final</th><th scope="col">Cambio</th><th scope="col">Cambio %</th></tr></thead>
+              <tbody id="compare-rows"></tbody>
+            </table></div>
+          </div>
+        </section>
         <div id="metric-chart" class="metric-chart"></div>
         <label class="inline">Gráfica <select id="metric-pick"></select></label>
         <div class="table-wrap"><table><thead><tr><th>Lectura</th><th>Visual.</th><th>Me gusta</th><th>Coment.</th><th>Comp.</th><th>Guard.</th><th>Ventas</th><th>Ingresos</th></tr></thead><tbody id="metric-rows"></tbody></table></div>

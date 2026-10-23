@@ -79,3 +79,25 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 @media(max-width:900px){.cal-day{min-height:4.6rem}.board{grid-template-columns:repeat(5,230px)}.metrics-grid{grid-template-columns:1fr}.metric-form{grid-template-columns:1fr 1fr}.pub-head{display:block}.inline.search{margin-left:0}}
 @media(max-width:600px){.dlg-body .cols{grid-template-columns:1fr}.chip small{display:none}}
 .metric-form input,.dlg-body input,.dlg-body select{width:100%;min-width:0}.metric-form label{min-width:0}.dlg-body label.file-pick{display:block}
+.metric-comparison{border-bottom:1px solid var(--line);padding-bottom:1.2rem;min-width:0}
+.compare-form[hidden]{display:none}
+#editor .dlg-head{gap:.7rem}
+#editor-title{margin-right:auto}
+#metrics-box{scroll-margin-top:75px}
+.metric-comparison h4{margin:0 0 .5rem;font:normal 1.15rem var(--hoard-font-serif)}
+.comparison-note{margin:0 0 1rem;color:var(--quiet);font-size:.8rem;line-height:1.5;max-width:70ch}
+.compare-form{display:flex;flex-wrap:wrap;gap:.7rem;align-items:end}
+.compare-form label{display:grid;gap:.35rem;color:var(--quiet);font-size:.78rem;flex:1 1 230px;min-width:0}
+.compare-form input{width:100%;min-width:0}
+.compare-form button{min-height:38px}
+.comparison-readings{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1rem 0;color:var(--quiet);font-size:.78rem}
+.comparison-readings dt{margin-bottom:.35rem}
+.comparison-readings dd{margin:0;color:var(--bright);line-height:1.5}
+.comparison-table{font-variant-numeric:tabular-nums}
+.comparison-table caption{text-align:left;color:var(--quiet);font-size:.78rem;padding:0 0 .6rem}
+.comparison-table th:not(:first-child),.comparison-table td{text-align:right;white-space:nowrap}
+.comparison-table tbody th{font-weight:normal;text-align:left;white-space:nowrap}
+.comparison-table .increase{color:var(--mint)}
+.comparison-table .decrease{color:var(--red)}
+.metric-comparison[aria-busy="true"] #compare-result{opacity:.55}
+@media(max-width:600px){.comparison-readings{grid-template-columns:1fr}.compare-form button{flex:1}.compare-form label{flex-basis:100%}}
