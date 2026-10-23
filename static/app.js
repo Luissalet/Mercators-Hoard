@@ -73,7 +73,7 @@ function renderSales(data) {
   $("#sales-batch-legacy").hidden = !data.last_sales_import || !!data.last_sales_import.batch;
   $("#sales-count").textContent = `${number(data.sales_count)} ventas`;
   $("#last-import").textContent = data.last_sales_import
-    ? `Última importación: ${dateLabel(data.last_sales_import.imported_at)} · ${number(data.last_sales_import.added)} nuevas ventas`
+    ? `Última importación: ${dateLabel(data.last_sales_import.imported_at)} · ${number(data.last_sales_import.added)} ${data.last_sales_import.added === 1 ? "venta nueva" : "nuevas ventas"}`
     : "Sin importaciones todavía";
   const summary = $("#sales-summary"); summary.replaceChildren();
   if (!data.sales_count) summary.append(el("p", "empty", "Todavía no hay ventas importadas. Usa el CSV de Cults para ver aquí los ingresos y los productos que más venden."));
@@ -246,7 +246,7 @@ $("#sales-import").addEventListener("submit", async event => {
     const response = await fetch("/api/sales/import", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({csv:csvText,columns})});
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "No se pudo importar");
-    message.textContent = `${number(result.added)} ventas añadidas; ${number(result.duplicates)} ya estaban registradas.`;
+    message.textContent = `${number(result.added)} ${result.added === 1 ? "venta añadida" : "ventas añadidas"}; ${number(result.duplicates)} ${result.duplicates === 1 ? "ya estaba registrada" : "ya estaban registradas"}.`;
     setLatestBatch(result.batch); importedBatch = result.batch;
     $("#sales-batch-imported").hidden = !importedBatch;
     await load();
