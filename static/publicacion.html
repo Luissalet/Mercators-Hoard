@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/publicacion.css">
   <script src="/copilot-context.js" defer></script>
+  <script src="/publication-draft.js" defer></script>
   <script src="/publicacion.js" defer></script>
 </head>
 <body>
@@ -73,6 +74,7 @@
     <form id="editor-form" method="dialog">
       <div class="dlg-head"><h2 id="editor-title">Publicación</h2><button type="button" id="editor-metrics" class="ghost">Métricas</button><button type="button" id="editor-close" class="ghost" aria-label="Cerrar">×</button></div>
       <div class="dlg-body">
+        <p id="draft-origin" class="form-message" role="status" hidden></p>
         <div class="cols">
           <label>Plataforma <select name="platform" required></select></label>
           <label>Estado <select name="status"></select></label>
@@ -92,6 +94,7 @@
         <div class="dlg-actions">
           <button type="submit" class="primary" id="save-post">Guardar</button>
           <button type="button" class="ghost" id="copy-post">Copiar texto</button>
+          <button type="button" class="ghost" id="base-post">Usar como base</button>
           <button type="button" class="ghost" id="suggest-post">Sugerir texto</button>
           <button type="button" class="ghost" id="publish-post">Marcar publicada</button>
           <button type="button" class="ghost danger" id="delete-post">Borrar</button>

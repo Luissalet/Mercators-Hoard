@@ -498,6 +498,7 @@ STATIC_FILES = {
     "/app.js": ("app.js", "text/javascript; charset=utf-8"), "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/publicacion": ("publicacion.html", "text/html; charset=utf-8"), "/publicacion.html": ("publicacion.html", "text/html; charset=utf-8"),
     "/publicacion.js": ("publicacion.js", "text/javascript; charset=utf-8"), "/publicacion.css": ("publicacion.css", "text/css; charset=utf-8"),
+    "/publication-draft.js": ("publication-draft.js", "text/javascript; charset=utf-8"),
 }
 MAX_BODY = 5_000_000
 

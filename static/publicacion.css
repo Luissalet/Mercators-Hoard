@@ -69,6 +69,8 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 .suggestions{list-style:none;padding:0;margin:0;display:grid;gap:.5rem}
 .suggestions li{border:1px solid var(--hoard-border);border-radius:var(--hoard-radius-sm);padding:.6rem;font-size:.85rem;display:grid;gap:.4rem}
 .metrics-box{border-top:1px solid var(--line);padding:1.2rem 1.3rem;display:grid;grid-template-columns:minmax(0,1fr);gap:.9rem}
+.metrics-box[hidden], #compare-form[hidden]{display:none}
+#draft-origin{overflow-wrap:anywhere}
 .metrics-box h3{margin:0;font:normal 1.2rem var(--hoard-font-serif)}
 .metric-form{display:grid;grid-template-columns:repeat(4,1fr);gap:.6rem;align-items:end}
 .metric-form label{display:grid;gap:.25rem;color:var(--quiet);font-size:.72rem}

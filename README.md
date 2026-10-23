@@ -36,6 +36,8 @@ Data stays in `data/mercator.sqlite3` (tables `posts`, `post_metrics`, `catalog_
 
 ## Family
 
+**Use as a base** (**Usar como base**) in a saved publication opens an editable new draft using only its visible platform, title, caption, hashtags, media reference and notes. The origin is shown; adapt the text or platform before saving. Opening/cancelling writes nothing; saving uses native post creation with a new identity, leaving the source unchanged. Dates, published URL, external IDs and metrics are not carried over, and no social-network publishing occurs. Copilot sees an unsaved object and retains the draft content across refresh.
+
 Mercator follows the Hoard family contract (`faustus-plugin.json`, `x-family`):
 
 - Tools through `GET /api/agent/tools` and `POST /api/agent/call` (bearer token in `data/mcp-token`, created on first start) and the stdio bridge: `posts_list`, `post_get`, `post_upsert`, `post_schedule`, `post_publish`, `post_metrics_add`, `post_metrics_compare`, `posts_stats`, `post_draft_from_media {media_ref, title}`, `post_caption_suggest`, `sales_batch_get {batch}`, `catalog_from_vulcan {}` (asks Vulcan for `listings_export_catalog` and upserts the result into the Cults catalogue; needs Vulcan running) plus the two below.

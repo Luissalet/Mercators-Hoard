@@ -3,7 +3,7 @@ const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const STATUS_LABELS = {idea: "Idea", draft: "Borrador", scheduled: "Programada", published: "Publicada", archived: "Archivada"};
 const METRIC_LABELS = {views: "Visualizaciones", likes: "Me gusta", comments: "Comentarios", shares: "Compartidos", saves: "Guardados", sales: "Ventas"};
 
-const state = {meta: null, posts: [], view: "calendar", cal: "month", cursor: new Date(), platform: "", q: "", editing: null, csv: "", preview: null};
+const state = {meta: null, posts: [], view: "calendar", cal: "month", cursor: new Date(), platform: "", q: "", editing: null, basedOn: null, csv: "", preview: null};
 let formBaseline = {};
 let editorVersion = 0;
 let comparisonPost = null;
@@ -35,8 +35,9 @@ window.mercatorCopilot?.register('publishing', {
           open ? {kind: "publication", object_id: post?.id || null,
             missing: Boolean(id && !post),
             dirty: Object.keys(fields).length > 0, fields,
-            metrics, comparison: {from: $("#compare-from").value, to: $("#compare-to").value,
-              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone}} : null} };
+            based_on: state.basedOn,
+            metrics: post ? metrics : {}, comparison: post ? {from: $("#compare-from").value, to: $("#compare-to").value,
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone} : null} : null} };
   },
   refresh() {
     void load();
@@ -284,9 +285,10 @@ function showMedia(post) {
   } else box.append(el("p", "ref", ref.startsWith("hoard://") ? `Referencia de otra app: ${ref}` : "La vista previa aparece al guardar."));
 }
 
-function openEditor(post, preset) {
+function openEditor(post, preset, origin) {
   editorVersion += 1;
   state.editing = post || null;
+  state.basedOn = origin || null;
   const form = editorForm();
   form.reset();
   const values = post || {platform: state.platform || "instagram_reel", status: "idea", hashtags: [], ...(preset || {})};
@@ -295,7 +297,7 @@ function openEditor(post, preset) {
   field("status").value = values.status;
   field("title").value = values.title || "";
   field("caption").value = values.caption || "";
-  field("hashtags").value = (values.hashtags || []).map(t => "#" + t).join(" ");
+  field("hashtags").value = Array.isArray(values.hashtags) ? values.hashtags.map(t => "#" + t).join(" ") : values.hashtags || "";
   field("media_ref").value = values.media_ref || "";
   field("scheduled_at").value = toLocalInput(values.scheduled_at);
   field("published_at").value = toLocalInput(values.published_at);
@@ -303,8 +305,10 @@ function openEditor(post, preset) {
   field("notes").value = values.notes || "";
   $("#editor-title").textContent = post ? `Publicación #${post.id}` : "Nueva publicación";
   $("#editor-message").textContent = "";
+  $("#draft-origin").hidden = !origin;
+  $("#draft-origin").textContent = origin ? `Borrador basado en la publicación #${origin.id}${origin.title ? ` · ${origin.title}` : ''}. Revisa el contenido y la plataforma antes de guardar. Todavía no se ha creado; la publicación original no se modifica.` : '';
   $("#suggestions").hidden = true;
-  for (const id of ["delete-post", "publish-post", "editor-metrics"]) $("#" + id).hidden = !post;
+  for (const id of ["delete-post", "publish-post", "editor-metrics", "base-post"]) $("#" + id).hidden = !post;
   $("#metrics-box").hidden = !post;
   comparisonRequest += 1;
   $("#compare-result").hidden = true;
@@ -314,7 +318,8 @@ function openEditor(post, preset) {
   if (post) loadMetrics(post.id);
   if (!$("#editor").open) $("#editor").showModal();
   if (post) history.replaceState(null, "", "#post-" + post.id);
-  formBaseline = formBody();
+  else history.replaceState(null, "", location.pathname);
+  formBaseline = origin ? {} : formBody();
 }
 
 function formBody() {
@@ -559,6 +564,12 @@ function wire() {
     const tags = field("hashtags").value.split(/[\s,;]+/).map(t => t.replace(/^#+/, "")).filter(Boolean).map(t => "#" + t).join(" ");
     const text = [field("caption").value.trim(), tags].filter(Boolean).join("\n\n");
     $("#editor-message").textContent = (await copyText(text)) ? "Texto copiado." : "No se pudo copiar; selecciónalo a mano.";
+  });
+  $("#base-post").addEventListener("click", () => {
+    if (!state.editing) return;
+    const origin = {id: state.editing.id, title: field("title").value};
+    openEditor(null, window.mercatorDraft.fromContent(formBody()), origin);
+    field("title").focus();
   });
   $("#publish-post").addEventListener("click", () => {
     if (!field("url").value.trim() && !confirm("No has puesto la URL de la publicación. ¿Marcarla como publicada igualmente?")) return;
