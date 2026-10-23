@@ -732,7 +732,7 @@ class Handler(BaseHTTPRequestHandler):
             self._post_agent_call()
             return
         routes = {"/api/refresh", "/api/sales/import", "/api/posts", "/api/posts/delete", "/api/posts/schedule", "/api/posts/publish",
-                  "/api/posts/metrics", "/api/posts/metrics/compare", "/api/posts/import/preview", "/api/posts/import", "/api/posts/caption", "/api/catalog/from-vulcan", "/api/analytics/query",
+                  "/api/posts/metrics", "/api/posts/metrics/compare", "/api/posts/from-media", "/api/posts/import/preview", "/api/posts/import", "/api/posts/caption", "/api/catalog/from-vulcan", "/api/analytics/query",
                   "/api/crm/company", "/api/crm/deal", "/api/crm/activity", "/api/crm/patch"}
         if path not in routes:
             self._json(404, {"error": "No encontrado"})
@@ -747,6 +747,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = import_sales_batch(body.get("csv", ""), body.get("columns", {}))
             elif path == "/api/posts":
                 result = agent_tools.call_tool("post_upsert", body, cap=False)
+            elif path == "/api/posts/from-media":
+                result = agent_tools.call_tool("post_draft_from_media", body, cap=False)
             elif path == "/api/posts/delete":
                 with session() as conn:
                     result = {"ok": True, "deleted": publishing.delete_post(conn, body.get("post_id"))["id"]}

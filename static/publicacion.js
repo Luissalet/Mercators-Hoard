@@ -10,6 +10,7 @@ let comparisonPost = null;
 let comparisonRows = [];
 let comparisonRequest = 0;
 let calendarRange = {};
+let mediaPostRequest = 0;
 window.mercatorCopilot?.register('publishing', {
   async context() {
     const open = $("#editor")?.open;
@@ -19,6 +20,7 @@ window.mercatorCopilot?.register('publishing', {
     delete fields.post_id;
     const metrics = Object.fromEntries(new FormData($("#metric-form")));
     const importer = $("#importer").open;
+    const mediaFields = Object.fromEntries(new FormData($("#media-post-form")));
     const importFields = {platform: $("#import-platform").value,
       filename: $("#import-file").files[0]?.name || null,
       mapping: Object.fromEntries([...$("#import-mapping").querySelectorAll("select")]
@@ -38,9 +40,12 @@ window.mercatorCopilot?.register('publishing', {
             dirty: Object.keys(fields).length > 0, fields,
             based_on: state.basedOn,
             metrics: post ? metrics : {}, comparison: post ? {from: $("#compare-from").value, to: $("#compare-to").value,
-              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone} : null} : null} };
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone} : null} :
+            $("#media-post").open ? {kind: "publication-from-media", object_id: null,
+              dirty: Object.values(mediaFields).some(Boolean), fields: mediaFields} : null} };
   },
   refresh() {
+    invalidateMediaPost();
     void load();
     if ($("#editor").open && state.editing?.id) void loadMetrics(state.editing.id).catch(error => say(error.message));
   },
@@ -85,7 +90,7 @@ async function load() {
   try {
     if (!state.meta) {
       state.meta = await api("/api/publishing/meta");
-      for (const select of [$("#filter-platform"), $("[name=platform]", $("#editor-form")), $("#import-platform")]) {
+      for (const select of [$("#filter-platform"), $("[name=platform]", $("#editor-form")), $("#import-platform"), $("#media-post-form [name=platform]")]) {
         for (const platform of state.meta.platforms) select.append(new Option(platform.label, platform.id));
       }
       for (const status of state.meta.statuses) $("[name=status]", $("#editor-form")).append(new Option(STATUS_LABELS[status], status));
@@ -325,6 +330,50 @@ function openEditor(post, preset, origin) {
   formBaseline = origin ? {} : formBody();
 }
 
+function invalidateMediaPost() {
+  mediaPostRequest += 1;
+  $("#media-post-result").replaceChildren(); $("#media-post-result").hidden = true;
+  $("#media-post-message").textContent = "";
+  $("#media-post-form").removeAttribute("aria-busy");
+  $("#media-post-form button").disabled = false;
+}
+
+async function prepareMediaPost(event) {
+  event.preventDefault();
+  invalidateMediaPost();
+  const ticket = mediaPostRequest;
+  const fields = Object.fromEntries(new FormData($("#media-post-form")));
+  if (!fields.platform) delete fields.platform;
+  $("#media-post-form").setAttribute("aria-busy", "true");
+  $("#media-post-form button").disabled = true;
+  $("#media-post-message").textContent = "Creando o localizando publicación…";
+  try {
+    const result = await api("/api/posts/from-media", fields);
+    void load();
+    if (ticket !== mediaPostRequest) return;
+    const post = result.post, box = $("#media-post-result"), data = el("dl", "media-post-data");
+    for (const [label, value] of [["Resultado", result.created ? "Borrador creado" : "Publicación localizada sin modificar"],
+      ["Publicación", `#${post.id} · ${post.title || "Sin título"}`], ["Plataforma", platformLabel(post.platform)],
+      ["Estado", STATUS_LABELS[post.status] || post.status], ["Referencia del medio", post.media_ref]]) {
+      const group = el("div"); group.append(el("dt", "", label), el("dd", "", value)); data.append(group);
+    }
+    const open = el("button", "ghost", "Abrir publicación"); open.type = "button";
+    open.addEventListener("click", async () => {
+      if (ticket !== mediaPostRequest) return;
+      if ($("#editor").open) { $("#media-post-message").textContent = "Hay un editor abierto. Ciérralo cuando termines para abrir esta publicación."; return; }
+      open.disabled = true;
+      try {
+        const fresh = await api("/api/posts/" + post.id);
+        if (ticket === mediaPostRequest && !$("#editor").open) openEditor(fresh.post);
+      } catch (error) { if (ticket === mediaPostRequest) $("#media-post-message").textContent = error.message; }
+      finally { open.disabled = false; }
+    });
+    box.append(data, open); box.hidden = false;
+    $("#media-post-message").textContent = result.created ? "Borrador guardado. Puedes abrirlo para preparar el contenido." : "Se conserva la publicación existente, con su título, plataforma y estado.";
+  } catch (error) { if (ticket === mediaPostRequest) $("#media-post-message").textContent = error.message; }
+  finally { if (ticket === mediaPostRequest) { $("#media-post-form").removeAttribute("aria-busy"); $("#media-post-form button").disabled = false; } }
+}
+
 function formBody() {
   const body = {platform: field("platform").value, status: field("status").value, title: field("title").value, caption: field("caption").value,
     hashtags: field("hashtags").value, media_ref: field("media_ref").value, scheduled_at: field("scheduled_at").value || null,
@@ -561,6 +610,10 @@ async function exportCalendar() {
 }
 
 function wire() {
+  $("#media-post-form").addEventListener("submit", prepareMediaPost);
+  $("#media-post-form").addEventListener("input", invalidateMediaPost);
+  $("#media-post-form").addEventListener("change", invalidateMediaPost);
+  $("#media-post").addEventListener("toggle", () => { if (!$("#media-post").open) invalidateMediaPost(); });
   $("#cal-export").addEventListener("click", exportCalendar);
   for (const button of document.querySelectorAll("[data-view]")) button.addEventListener("click", () => { state.view = button.dataset.view; render(); });
   for (const button of document.querySelectorAll("[data-cal]")) button.addEventListener("click", () => { state.cal = button.dataset.cal; render(); });

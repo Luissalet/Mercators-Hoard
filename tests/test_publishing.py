@@ -474,6 +474,25 @@ class ContractTests(Base):
         self.assertEqual((status, body["ok"], len(body["items"])), (200, True, 1))
         self.assertEqual(body["items"][0]["kind"], "publish")
 
+    def test_ui_from_media_creates_or_finds_native_identity_without_overwriting(self):
+        original = self.call("post_upsert", platform="x", title="Original ñ", status="published",
+                             media_ref="hoard://lumiere/render/existing", url="https://example.invalid/post")['post']
+        self.call("post_metrics_add", post_id=original['id'], views=0, likes=2)
+        before = self.call("post_get", post_id=original['id'])
+        status, found = self.json("POST", "/api/posts/from-media", {"media_ref":original['media_ref'],"title":"Ignored","platform":"youtube"})
+        self.assertEqual((status,found['created'],found['post_id']), (200,False,original['id']))
+        self.assertEqual(found['post']['platform'], 'x')
+        self.assertEqual(self.call("post_get", post_id=original['id']), before)
+        body={"media_ref":"hoard://lumiere/render/new","title":"Borrador ñ"}
+        status, made=self.json("POST", "/api/posts/from-media", body)
+        status2, again=self.json("POST", "/api/posts/from-media", body)
+        self.assertEqual((status,status2,made['created'],again['created']), (200,200,True,False))
+        self.assertEqual(made['post_id'],again['post_id'])
+        self.assertEqual(made['post']['status'],'draft')
+        self.assertIsNone(made['post']['scheduled_at'])
+        self.assertIsNone(made['post']['published_at'])
+        self.assertEqual(self.json("POST", "/api/posts/from-media", {**body,"title":""})[0],400)
+
     def test_ui_flow_over_http_emits_events(self):
         status, made = self.json("POST", "/api/posts", {"platform": "youtube", "title": "Vídeo", "status": "scheduled", "scheduled_at": "2026-10-05T18:00"})
         self.assertEqual(status, 200)

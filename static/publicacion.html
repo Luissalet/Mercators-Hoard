@@ -27,6 +27,20 @@
         <p id="pub-status" class="live-key" role="status"></p>
       </div>
 
+      <details id="media-post" class="media-post">
+        <summary>Desde un medio: crear o localizar publicación</summary>
+        <p id="media-post-help">Indica una referencia de medio. Si ya tiene una publicación no archivada, se recupera sin modificarla, aunque esté publicada o use otra plataforma. Si hay varias, se devuelve la de menor ID.</p>
+        <form id="media-post-form" class="media-post-form" aria-describedby="media-post-help">
+          <label>Referencia del medio <input name="media_ref" required maxlength="2000" autocomplete="off" placeholder="hoard://lumiere/render/…"></label>
+          <label>Título para una nueva publicación <input name="title" required maxlength="300" autocomplete="off"></label>
+          <label>Plataforma para una nueva publicación <select name="platform"><option value="">Predeterminada al crear</option></select></label>
+          <button type="submit" class="ghost">Crear o localizar</button>
+        </form>
+        <p>Título y plataforma sólo se usan al crear. Se guarda un borrador nuevo si no hay coincidencia; no publica en redes ni comprueba el archivo o la app de origen. Cerrar o cambiar campos no cancela una petición ya enviada.</p>
+        <p id="media-post-message" role="status" aria-live="polite"></p>
+        <div id="media-post-result" hidden></div>
+      </details>
+
       <div class="pub-toolbar">
         <div class="seg" role="tablist" aria-label="Vista">
           <button type="button" role="tab" data-view="calendar" aria-selected="true">Calendario</button>
