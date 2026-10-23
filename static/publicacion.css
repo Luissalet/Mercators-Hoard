@@ -3,6 +3,7 @@ nav a[aria-current="page"]{background:var(--hoard-elevated);color:var(--hoard-te
 .pub-head{display:flex;justify-content:space-between;align-items:flex-end;gap:2rem;padding:3rem 0 1.6rem}
 .pub-head h1{font:normal clamp(2.2rem,4vw,3.6rem)/1.05 var(--hoard-font-serif);margin:0;letter-spacing:-.03em}
 .pub-head p{color:var(--quiet);margin:.8rem 0 0;max-width:60ch;line-height:1.5}
+#pub-status{white-space:normal;max-width:48ch;overflow-wrap:anywhere}
 .pub-toolbar{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;padding:1rem 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-bottom:1.6rem}
 .seg{display:inline-flex;border:1px solid var(--hoard-border);border-radius:var(--hoard-radius);overflow:hidden}
 .seg button{background:transparent;color:var(--quiet);border:0;padding:.55rem .9rem;font-size:.85rem}

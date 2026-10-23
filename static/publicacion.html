@@ -44,11 +44,13 @@
           <strong id="cal-title"></strong>
           <button type="button" id="cal-next" class="ghost" aria-label="Siguiente">›</button>
           <button type="button" id="cal-today" class="ghost">Hoy</button>
+          <button type="button" id="cal-export" class="ghost" aria-describedby="cal-export-note">Descargar programadas (.ics)</button>
           <div class="seg small" role="tablist" aria-label="Escala">
             <button type="button" role="tab" data-cal="month" aria-selected="true">Mes</button>
             <button type="button" role="tab" data-cal="week" aria-selected="false">Semana</button>
           </div>
         </div>
+        <p id="cal-export-note" class="table-note">Solo las programadas del periodo visible y los filtros actuales. Es una copia para tu agenda, sin sincronización. Las horas sin zona mantienen su hora local en la agenda de destino.</p>
         <div id="cal-grid" class="cal-grid"></div>
         <p class="table-note">Se colocan por fecha programada, o por fecha de publicación cuando ya están publicadas. Las ideas y borradores sin fecha están en el tablero.</p>
       </section>

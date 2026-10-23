@@ -533,7 +533,7 @@ def post_media_file(post_id: int) -> tuple[Path, str] | None:
 
 
 class Handler(BaseHTTPRequestHandler):
-    def _reply(self, code: int, body: bytes, content_type: str) -> None:
+    def _reply(self, code: int, body: bytes, content_type: str, extra_headers: dict | None = None) -> None:
         if content_type.startswith('text/html'):
             body = CopilotRelay.inject_html(body)
         self.send_response(code)
@@ -542,6 +542,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'")
         self.send_header("Content-Length", str(len(body)))
+        for name, value in (extra_headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         if self.command != 'HEAD':
             self.wfile.write(body)
@@ -641,6 +643,17 @@ class Handler(BaseHTTPRequestHandler):
                 with reading() as conn:
                     totals = publishing.stats(conn, query.get("platform", ""))
                 self._json(200, totals)
+            elif path == "/api/posts/calendar.ics":
+                import calendar_export
+                if set(query) - {'from', 'to', 'platform', 'q'}:
+                    raise ValueError('Filtros de calendario desconocidos')
+                with reading() as conn:
+                    exported = calendar_export.export_calendar(conn, date_from=query.get('from', ''),
+                        date_to=query.get('to', ''), platform=query.get('platform', ''), q=query.get('q', ''),
+                        base_url=f'http://127.0.0.1:{self.server.server_port}')
+                self._reply(200, exported['content'].encode('utf-8'), 'text/calendar; charset=utf-8',
+                            {'Content-Disposition': 'attachment; filename="' + exported['filename'] + '"',
+                             'X-Mercator-Events': str(exported['count'])})
             elif path == "/api/analytics/history":
                 import agent_tools
                 self._json(200, agent_tools.call_tool("plausible_history", query, cap=False))

@@ -8,6 +8,7 @@ import re
 from typing import Any, Callable
 
 import cults_catalog
+import calendar_export
 import crm
 import mercator_family
 import publishing
@@ -73,6 +74,19 @@ def posts_list(args: dict) -> dict:
     return _store(lambda c: publishing.list_posts(
         c, args.get("status") or "", args.get("platform") or "", args.get("from") or "", args.get("to") or "",
         args.get("q") or "", args.get("limit", 50), args.get("offset", 0)), write=False)
+
+
+def posts_calendar_export(args: dict) -> dict:
+    from urllib.parse import urlencode
+    import mercator
+    exported = _store(lambda c: calendar_export.export_calendar(
+        c, date_from=args.get('from', ''), date_to=args.get('to', ''),
+        platform=args.get('platform', ''), q=args.get('q', '')), write=False)
+    return {'ok': True, 'count': exported['count'], 'filename': exported['filename'],
+            'content_type': 'text/calendar; charset=utf-8', 'filters': exported['filters'],
+            'download_url': mercator.base_url() + '/api/posts/calendar.ics?' + urlencode(exported['filters']),
+            'note': 'Read-only download of the current schedule, recalculated when opened; no subscription or sync. '
+                    'Explicit offsets become UTC; times without a zone stay floating in the receiving calendar.'}
 
 
 def post_get(args: dict) -> dict:
@@ -371,6 +385,16 @@ TOOLS.extend([
     {"name": "crm_export", "description": "Exportar CRM filtrado como JSON y CSV con referencias, actividades, fecha y resumen. Read-only.\nEl resultado MCP puede truncarse; para exportación completa usar la interfaz local.",
      "inputSchema": _schema(CRM_FILTERS), "annotations": _ann(True), "run": lambda a: _store(lambda c: crm.export(c, a), write=False)},
 ])
+TOOLS.append({
+    "name": "posts_calendar_export",
+    "description": "Export scheduled publications as an iCalendar (.ics) download, without changing posts.\n"
+                   "Optional from/to are inclusive stored calendar dates YYYY-MM-DD; platform and q narrow the schedule. "
+                   "Returns a local download URL and count, never truncated calendar text. Open the URL while Mercator is running. "
+                   "A fresh download reflects current data. It is not a subscription; importing does not publish anything. "
+                   "Dates without an hour are all-day; offset times become UTC; naive times remain floating local times.",
+    "inputSchema": _schema({"from": STRING, "to": STRING, "platform": PLATFORM, "q": STRING}),
+    "annotations": _ann(True), "run": posts_calendar_export,
+})
 TOOLS_BY_NAME = {t["name"]: t for t in TOOLS}
 
 

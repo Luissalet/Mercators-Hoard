@@ -9,6 +9,7 @@ let editorVersion = 0;
 let comparisonPost = null;
 let comparisonRows = [];
 let comparisonRequest = 0;
+let calendarRange = {};
 window.mercatorCopilot?.register('publishing', {
   async context() {
     const open = $("#editor")?.open;
@@ -137,6 +138,8 @@ function renderCalendar() {
     $("#cal-title").textContent = title.charAt(0).toUpperCase() + title.slice(1);
   }
   for (const name of WEEKDAYS) grid.append(el("div", "cal-dow", name));
+  const lastDay = new Date(start); lastDay.setDate(start.getDate() + count - 1);
+  calendarRange = {from: dayKey(start), to: dayKey(lastDay)};
   const byDay = new Map();
   for (const post of filtered()) {
     const key = postWhen(post).slice(0, 10);
@@ -536,7 +539,29 @@ async function previewImport() {
 
 // ---------------------------------------------------------------- wiring
 
+async function exportCalendar() {
+  const button = $("#cal-export");
+  const params = new URLSearchParams({...calendarRange, platform: state.platform, q: state.q});
+  button.disabled = true;
+  button.textContent = 'Descargando…';
+  try {
+    const response = await fetch('/api/posts/calendar.ics?' + params);
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      throw new Error(result.error || 'No se pudo descargar el calendario. Reintenta.');
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob), link = el('a');
+    link.href = url; link.download = 'mercator-programadas.ics';
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    say(`Exportadas: ${number(Number(response.headers.get('X-Mercator-Events')))}. Copia descargada para tu agenda, sin sincronización.`);
+  } catch (error) { say(error.message); }
+  finally { button.disabled = false; button.textContent = 'Descargar programadas (.ics)'; }
+}
+
 function wire() {
+  $("#cal-export").addEventListener("click", exportCalendar);
   for (const button of document.querySelectorAll("[data-view]")) button.addEventListener("click", () => { state.view = button.dataset.view; render(); });
   for (const button of document.querySelectorAll("[data-cal]")) button.addEventListener("click", () => { state.cal = button.dataset.cal; render(); });
   const shift = delta => {
