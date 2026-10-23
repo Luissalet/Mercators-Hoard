@@ -1,5 +1,7 @@
 # Mercator's Hoard
 
+En una oportunidad del CRM, el formulario de interacción admite fecha/hora ISO opcional con zona explícita (`Z` o un desfase como `+02:00`). Vacía usa la hora del servidor al guardar. La API/MCP `crm_activity_add` existente la registra como `observed_at` y guarda aparte la hora de registro `recorded_at`; el historial rotula ambas y mantiene su orden nativo por registro más reciente y su vista de 200 entradas. Anota una interacción ocurrida, sin enviar mensajes ni avisos. Un fallo conserva nota/fuente/fecha y reutiliza el ID nativo en el reintento idéntico. Guardar la interacción conserva los campos pendientes de la oportunidad y las ediciones posteriores de la interacción.
+
 Desde **Publicación → Calendario**, **Descargar programadas (.ics)** exporta
 las publicaciones programadas de las celdas visibles y los filtros actuales
 de plataforma y búsqueda. Importa la copia en tu agenda; no sincroniza ni

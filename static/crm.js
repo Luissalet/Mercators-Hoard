@@ -4,7 +4,7 @@
   const $ = s => root.querySelector(s);
   const labels = {lead:'Contacto inicial',qualified:'Cualificada',proposal:'Propuesta',negotiation:'Negociación',won:'Ganada',lost:'Perdida',archived:'Archivada'};
   const filters = $('#crm-filters'), editor = $('#crm-editor'), message = $('#crm-message');
-  let offset = 0, total = 0, busy = false, currentKind = '', current = null, activityRequest = '';
+  let offset = 0, total = 0, busy = false, currentKind = '', current = null, activityAttempt = null;
   let loadVersion = 0;
   let fieldId = 0;
   let formBaseline = {};
@@ -90,10 +90,15 @@
     const active = document.activeElement;
     const oldActivity = previous ? editor.querySelectorAll('form')[1] : null;
     const activityFields = oldActivity ? Object.fromEntries(new FormData(oldActivity)) : null;
+    if (activityFields && previous.activitySent) {
+      for (const [key,value] of Object.entries(previous.activitySent)) {
+        if (activityFields[key] === value) activityFields[key] = '';
+      }
+    }
     const focus = previous && (previous.form.contains(active) || oldActivity?.contains(active))
       ? {index: oldActivity?.contains(active) ? 1 : 0, name: active.name,
           start: active.selectionStart, end: active.selectionEnd} : null;
-    currentKind=kind;current=row;activityRequest=crypto.randomUUID();editor.replaceChildren();editor.hidden=false;
+    currentKind=kind;current=row;if(!previous)activityAttempt=null;editor.replaceChildren();editor.hidden=false;
     editor.append(node('h3',`${id?'Editar':'Añadir'} ${kind==='company'?'empresa':'oportunidad'}`));
     const form=node('form'),grid=node('div');grid.className='crm-fields';form.append(grid);
     if(kind==='company'){field(grid,'name','Empresa',row.name,'text',null,true);field(grid,'segment','Segmento',row.segment);}
@@ -127,14 +132,35 @@
     if(kind==='deal'&&id){
       editor.append(node('h3','Interacciones e historial'));
       const noteForm=node('form'),note=field(noteForm,'note','Anotar una interacción real','', 'textarea',null,true);field(noteForm,'source_ref','Fuente de la interacción (referencia Hoard)','');
+      const observed=field(noteForm,'observed_at','Fecha real de la interacción (ISO con zona, opcional)','');
+      observed.placeholder='2026-10-01T09:30:00-03:00';
+      const dateHelp=node('p','Déjala vacía para usar la hora del servidor al guardar. Si indicas una fecha, incluye la hora y la zona: Z o un desfase como +02:00. No se deduce una zona ni se programa un aviso.');
+      dateHelp.className='crm-help';dateHelp.id=observed.id+'-help';observed.setAttribute('aria-describedby',dateHelp.id);noteForm.append(dateHelp);
       const add=node('button','Guardar interacción');add.type='submit';noteForm.append(add);
       if(activityFields) for(const [key,value] of Object.entries(activityFields)) {
         const input=noteForm.elements.namedItem(key);if(input) input.value=value;
       }
-      noteForm.onsubmit=e=>{e.preventDefault();void work(async()=>{await request('/api/crm/activity',{deal_id:id,...Object.fromEntries(new FormData(noteForm)),request_id:activityRequest});await edit('deal',id);});};editor.append(noteForm);
+      noteForm.onsubmit=e=>{e.preventDefault();void work(async()=>{
+        const sent=Object.fromEntries(new FormData(noteForm)), fields={...sent};
+        if(!fields.observed_at)delete fields.observed_at;
+        const fingerprint=JSON.stringify({deal_id:id,...fields});
+        if(activityAttempt?.fingerprint!==fingerprint)activityAttempt={fingerprint,id:crypto.randomUUID()};
+        const baseline={...formBaseline};
+        await request('/api/crm/activity',{deal_id:id,...fields,request_id:activityAttempt.id});
+        await edit('deal',id,{form,sent:baseline,activitySent:sent});
+        activityAttempt=null;
+      });};editor.append(noteForm);
+      const orderHelp=node('p','Ordenado por fecha de registro, más recientes primero. Se muestran hasta 200 actividades; la exportación JSON incluye el historial completo.');orderHelp.className='crm-help';editor.append(orderHelp);
       const history=node('ul');history.className='crm-history';
-      for(const activity of row.activities||[]){const li=node('li'),time=node('time',new Date(activity.observed_at).toLocaleString('es-ES'));time.dateTime=activity.observed_at;li.append(time);if(activity.kind==='change'){const details=node('details');details.append(node('summary','Cambio registrado'),node('pre',JSON.stringify(JSON.parse(activity.note),null,2)));li.append(details);}else li.append(node('p',activity.note),node('small',activity.source_ref));history.append(li);}editor.append(history);
-      if((row.activities||[]).length===200)editor.append(node('p','Se muestran las 200 actividades más recientes. La exportación JSON incluye el historial completo.'));
+      for(const activity of row.activities||[]){
+        const li=node('li'),dates=node('dl');dates.className='crm-activity-dates';
+        for(const [label,value] of [['Ocurrió',activity.observed_at],['Registrado',activity.recorded_at]]){
+          const group=node('div'),definition=node('dd'),time=node('time',new Date(value).toLocaleString('es-ES',{timeZoneName:'short'}));
+          time.dateTime=value;definition.append(time,node('code',value));group.append(node('dt',label),definition);dates.append(group);
+        }
+        li.append(dates);
+        if(activity.kind==='change'){const details=node('details');details.append(node('summary','Cambio registrado'),node('pre',JSON.stringify(JSON.parse(activity.note),null,2)));li.append(details);}else li.append(node('p',activity.note),node('small',activity.source_ref));history.append(li);
+      }editor.append(history);
     }
     if(focus) {
       const input=editor.querySelectorAll('form')[focus.index]?.elements.namedItem(focus.name);

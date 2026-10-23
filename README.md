@@ -1,5 +1,7 @@
 # Mercator's Hoard
 
+In a CRM opportunity, the interaction form accepts an optional ISO date/time with an explicit zone (`Z` or an offset such as `+02:00`). Leave it empty to use server time when saving. The existing `crm_activity_add` API/MCP records this as `observed_at` and records entry time separately as `recorded_at`; the history labels both and keeps its native newest-recorded-first order and 200-entry view. This logs an interaction that occurred; it sends no message or reminder. Failed saves retain note/source/date and reuse the native request ID for an unchanged retry. Saving an interaction preserves unsaved opportunity fields and later interaction edits.
+
 [Español](README.es.md)
 
 A local dashboard for WatchHoard and BookHoard usage, Cults product listings and sales imported from Cults. It stores history only on this computer in `data/mercator.sqlite3`.
