@@ -275,6 +275,32 @@ class CsvTests(Base):
 class SalesBatchTests(Base):
     CSV = "id,date,product,amount,currency\nA,2026-09-28,Model A,12.50,EUR\nB,2026-09-28,Model B,9.00,USD\n"
 
+    def test_batch_http_matches_native_and_summary_keeps_latest_empty_batch(self):
+        first = mercator.import_sales_batch(self.CSV, SALES_COLUMNS)
+        second = mercator.import_sales_batch(self.CSV + 'C,2026-09-29,Café "QA",3.00,EUR\n', SALES_COLUMNS)
+        again = mercator.import_sales_batch(self.CSV, SALES_COLUMNS)
+        with mercator.reading() as store:
+            before = {table: [tuple(row) for row in store.execute(f'SELECT * FROM {table} ORDER BY rowid')]
+                      for table in ('sales', 'sales_imports')}
+        with running_server() as port, closing(HTTPConnection('127.0.0.1', port)) as conn:
+            for imported in (first, second, again):
+                conn.request('GET', '/api/sales/batch?batch=' + imported['batch'])
+                response = conn.getresponse()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(json.loads(response.read()), mercator.sales_batch(imported['batch']))
+            conn.request('GET', '/api/summary')
+            response = conn.getresponse()
+            self.assertEqual(json.loads(response.read())['last_sales_import']['batch'], again['batch'])
+            conn.request('GET', '/api/sales/batch?batch=imp-missing')
+            response = conn.getresponse()
+            self.assertEqual(response.status, 400)
+            self.assertIn('error', json.loads(response.read()))
+        self.assertEqual(mercator.sales_batch(second['batch'])['lines'][0]['product'], 'Café "QA"')
+        self.assertEqual(mercator.sales_batch(again['batch'])['count'], 0)
+        with mercator.reading() as store:
+            self.assertEqual(before, {table: [tuple(row) for row in store.execute(f'SELECT * FROM {table} ORDER BY rowid')]
+                                      for table in ('sales', 'sales_imports')})
+
     def test_import_creates_a_batch_with_event_and_lines(self):
         result = mercator.import_sales_batch(self.CSV, SALES_COLUMNS)
         self.assertEqual((result["rows"], result["added"], result["duplicates"]), (2, 2, 0))

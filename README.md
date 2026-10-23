@@ -20,6 +20,8 @@ Export a sales CSV from Cults, select it in **Sales**, and map the date, product
 
 Revenue is shown by currency. Different currencies are never summed, and revenue is not presented as net profit. Mercator does not fetch Cults sales directly because no verified API and sales schema are configured. It also reads, without modifying, product folders under `Desktop/Modelos/Contornos pokemon` and detects `cults3d.json` files. Set `MERCATOR_PRODUCTS_DIR` in `.env` to choose another folder.
 
+**View imported batch** (**Ver lote importado**) shows only the new sales saved by that import; **View latest batch** (**Ver último lote**) keeps the latest recorded batch available after reload. The panel shows its identity, registered source, import time, processed CSV rows, added sales and exact native amounts by currency. Its table displays 50 lines per page; line numbers belong to the batch, and local IDs are not Cults order numbers. Reimporting an already registered file creates a genuine empty batch. Older imports without a batch identifier say so. Reads use the existing `sales_batch_get {batch}` calculation through `GET /api/sales/batch?batch=...`; viewing or retrying does not import again. This is not a general import-history browser or proof of payment.
+
 ## Publishing
 
 The **Publication** page (`/publicacion`) plans and measures what you post.

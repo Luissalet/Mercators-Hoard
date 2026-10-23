@@ -1,6 +1,9 @@
 const $ = (selector) => document.querySelector(selector);
 let dashboard = null;
 let csvText = "";
+let dashboardRequest = 0;
+let latestBatch = "", importedBatch = "", batchId = "", batchResult = null, batchPage = 0, batchRequest = 0;
+const BATCH_PAGE_SIZE = 50;
 
 function el(tag, className, value) {
   const node = document.createElement(tag);
@@ -66,6 +69,8 @@ function renderProjects(data) {
   $("#overall-status").textContent = `${good} de 4 conexiones disponibles`;
 }
 function renderSales(data) {
+  setLatestBatch(data.last_sales_import?.batch || "");
+  $("#sales-batch-legacy").hidden = !data.last_sales_import || !!data.last_sales_import.batch;
   $("#sales-count").textContent = `${number(data.sales_count)} ventas`;
   $("#last-import").textContent = data.last_sales_import
     ? `Última importación: ${dateLabel(data.last_sales_import.imported_at)} · ${number(data.last_sales_import.added)} nuevas ventas`
@@ -96,6 +101,77 @@ function renderSales(data) {
   }
   if (!data.product_sales.length) { const row = el("tr"); const cell = el("td", "empty", "Aún no hay datos de ventas."); cell.colSpan = 3; row.append(cell); body.append(row); }
 }
+function closeSalesBatch() {
+  batchRequest++; batchId = ""; batchResult = null; batchPage = 0;
+  $("#sales-batch-panel").hidden = true;
+  $("#sales-batch-result").replaceChildren();
+}
+function setLatestBatch(id) {
+  if (id !== latestBatch) {
+    latestBatch = id; importedBatch = "";
+    $("#sales-batch-imported").hidden = true;
+    closeSalesBatch();
+  }
+  $("#sales-batch-last").hidden = !id;
+}
+function renderSalesBatch() {
+  const data = batchResult, result = $("#sales-batch-result");
+  result.replaceChildren();
+  const meta = el("p", "sales-batch-meta", `Fuente registrada: ${data.source} · Importado: ${dateLabel(data.imported_at)} · Filas procesadas del CSV: ${number(data.rows)} · Ventas añadidas: ${number(data.count)}`);
+  meta.title = data.imported_at; result.append(meta);
+  const totals = el("div", "sales-batch-currencies");
+  for (const item of data.by_currency) totals.append(el("span", "", `${item.income} ${item.currency} añadidos`));
+  result.append(totals, el("p", "sales-batch-note", "Sólo las ventas nuevas de esta importación; las ya registradas quedan fuera. Importes del CSV por moneda, sin conversión ni cálculo de beneficio o cobro."));
+  const lines = data.lines.slice(batchPage * BATCH_PAGE_SIZE, (batchPage + 1) * BATCH_PAGE_SIZE);
+  if (!data.count) result.append(el("p", "empty", "No se añadieron ventas nuevas en este lote."));
+  else {
+    const wrap = el("div", "table-wrap"), table = el("table", "sales-batch-table"), head = el("thead"), heading = el("tr"), body = el("tbody");
+    wrap.tabIndex = 0; wrap.setAttribute("role", "region"); wrap.setAttribute("aria-label", "Ventas añadidas en este lote");
+    table.append(el("caption", "", "Líneas del lote: el número no es la fila original del CSV; el ID es local, no el pedido de Cults."));
+    for (const label of ["Línea del lote", "ID local", "Fecha de venta", "Producto", "Importe", "Moneda"]) heading.append(el("th", "", label));
+    head.append(heading);
+    for (const line of lines) {
+      const row = el("tr"); row.dataset.batchLine = String(line.line);
+      for (const value of [line.line, line.id, line.sold_at, line.product, line.amount, line.currency]) row.append(el("td", "", value));
+      body.append(row);
+    }
+    table.append(head, body); wrap.append(table); result.append(wrap);
+  }
+  $("#sales-batch-pager").hidden = !data.count;
+  $("#sales-batch-showing").textContent = lines.length ? `Líneas ${lines[0].line}–${lines.at(-1).line} de ${number(data.count)}` : "";
+  $("#sales-batch-prev").disabled = batchPage === 0;
+  $("#sales-batch-next").disabled = (batchPage + 1) * BATCH_PAGE_SIZE >= data.count;
+}
+async function openSalesBatch(id) {
+  if (!id) return;
+  const version = ++batchRequest;
+  if (batchId !== id) { batchResult = null; batchPage = 0; $("#sales-batch-result").replaceChildren(); }
+  batchId = id;
+  $("#sales-batch-panel").hidden = false;
+  $("#sales-batch-id").textContent = `Lote ${id}`;
+  $("#sales-batch-status").textContent = "Leyendo el lote guardado…";
+  $("#sales-batch-error").hidden = true; $("#sales-batch-retry").hidden = true; $("#sales-batch-pager").hidden = true;
+  $("#sales-batch-title").focus();
+  try {
+    const response = await fetch("/api/sales/batch?" + new URLSearchParams({batch:id}));
+    const data = await response.json();
+    if (!response.ok || data.ok === false) throw new Error(data.error || "No se pudo leer el lote.");
+    if (version !== batchRequest) return;
+    batchResult = data; batchPage = 0; renderSalesBatch();
+    $("#sales-batch-status").textContent = "Lote guardado consultado.";
+  } catch (error) {
+    if (version !== batchRequest) return;
+    $("#sales-batch-status").textContent = "";
+    $("#sales-batch-error").textContent = error.message; $("#sales-batch-error").hidden = false;
+    $("#sales-batch-retry").hidden = false;
+  }
+}
+$("#sales-batch-last").onclick = () => { void openSalesBatch(latestBatch); };
+$("#sales-batch-imported").onclick = () => { void openSalesBatch(importedBatch); };
+$("#sales-batch-close").onclick = () => { closeSalesBatch(); $("#sales-batch-last").focus(); };
+$("#sales-batch-retry").onclick = () => { void openSalesBatch(batchId); };
+$("#sales-batch-prev").onclick = () => { batchPage--; renderSalesBatch(); };
+$("#sales-batch-next").onclick = () => { batchPage++; renderSalesBatch(); };
 function renderCatalog(data) {
   const catalog = data.catalog;
   $("#catalog-count").textContent = catalog.state === "ok" ? `${number(catalog.count)} productos` : "Catálogo sin acceso";
@@ -118,10 +194,13 @@ function filterCatalog() {
   $("#catalog-showing").textContent = `Mostrando ${number(Math.min(matches.length, 80))} de ${number(matches.length)} resultados${matches.length > 80 ? ". Acota la búsqueda para ver más." : "."}`;
 }
 async function load() {
+  const version = ++dashboardRequest;
   try {
     const response = await fetch("/api/summary");
     if (!response.ok) throw new Error("No se pudo leer el panel");
-    dashboard = await response.json();
+    const data = await response.json();
+    if (version !== dashboardRequest) return;
+    dashboard = data;
     renderProjects(dashboard); renderSales(dashboard); renderCatalog(dashboard);
   } catch (error) { $("#overall-status").textContent = error.message; $("#project-list").textContent = "No se pudieron cargar los datos. Recarga la página."; }
 }
@@ -168,6 +247,8 @@ $("#sales-import").addEventListener("submit", async event => {
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "No se pudo importar");
     message.textContent = `${number(result.added)} ventas añadidas; ${number(result.duplicates)} ya estaban registradas.`;
+    setLatestBatch(result.batch); importedBatch = result.batch;
+    $("#sales-batch-imported").hidden = !importedBatch;
     await load();
   } catch (error) { message.textContent = error.message; }
   finally { button.disabled = false; }
@@ -181,7 +262,7 @@ $("#refresh").addEventListener("click", async event => {
 });
 window.mercatorCopilot?.register('dashboard', {
   context() {
-    if (location.hash === '#ventas') return {active_objects: [], view: {editor: {
+    if (location.hash === '#ventas') return {active_objects: [], view: {sales_batch: batchId && !$('#sales-batch-panel').hidden ? {batch:batchId,page:batchPage+1} : null, editor: {
       kind: 'sales-import', object_id: null, dirty: Boolean(csvText), fields: {
         filename: $("#sales-file").files[0]?.name || null,
         mapping: Object.fromEntries([...$("#column-mapping").querySelectorAll('select')]

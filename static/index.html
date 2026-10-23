@@ -65,6 +65,16 @@
       </section>
       <section id="ventas" class="panel-section sales-section" aria-labelledby="sales-title">
         <div class="section-head"><div><h2 id="sales-title">Ventas en Cults</h2><p>Importa un CSV de tus ventas. Puedes repetir la importación; Mercator evita duplicados.</p></div><span id="sales-count" class="section-index">— ventas</span></div>
+        <div class="sales-batch-access"><button id="sales-batch-last" class="batch-button" type="button" hidden>Ver último lote</button><p id="sales-batch-legacy" class="table-note" hidden>La última importación no tiene identificador de lote registrado.</p></div>
+        <section id="sales-batch-panel" class="sales-batch" aria-labelledby="sales-batch-title" hidden>
+          <div class="sales-batch-head"><h3 id="sales-batch-title" tabindex="-1">Ventas añadidas por la importación</h3><button id="sales-batch-close" class="batch-button" type="button">Cerrar lote</button></div>
+          <p id="sales-batch-id" class="sales-batch-id"></p>
+          <p id="sales-batch-status" class="table-note" role="status"></p>
+          <p id="sales-batch-error" class="error" role="alert" hidden></p>
+          <button id="sales-batch-retry" class="batch-button" type="button" hidden>Reintentar lectura del lote</button>
+          <div id="sales-batch-result"></div>
+          <div id="sales-batch-pager" class="sales-batch-pager" hidden><button id="sales-batch-prev" class="batch-button" type="button">Líneas anteriores</button><span id="sales-batch-showing"></span><button id="sales-batch-next" class="batch-button" type="button">Líneas siguientes</button></div>
+        </section>
         <div class="sales-layout">
           <div class="sales-data"><p id="last-import" class="import-date"></p><div id="sales-summary" class="sales-summary"></div><div id="sales-months" class="sales-months" aria-label="Ingresos por mes"></div><div class="table-wrap"><table><caption>Productos con ventas registradas</caption><thead><tr><th>Producto</th><th>Ventas</th><th>Ingresos</th></tr></thead><tbody id="sales-products"></tbody></table></div></div>
           <form id="sales-import" class="import-form">
@@ -79,6 +89,7 @@
               <button type="submit" class="primary">Importar ventas</button>
             </div>
             <p id="import-message" class="form-message" role="status"></p>
+            <button id="sales-batch-imported" class="batch-button" type="button" hidden>Ver lote importado</button>
           </form>
         </div>
       </section>

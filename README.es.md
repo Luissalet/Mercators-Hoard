@@ -37,6 +37,8 @@ Exporta un CSV de ventas desde Cults, elígelo en la sección **Ventas** y asign
 
 Los ingresos se muestran por moneda, sin sumar monedas diferentes ni asumir que el importe es beneficio neto. Mercator no consulta Cults en directo hasta disponer de un acceso y un esquema de ventas comprobados.
 
+**Ver lote importado** muestra sólo las ventas nuevas guardadas en esa importación; **Ver último lote** conserva el acceso al último lote registrado después de recargar. El panel muestra identidad, fuente registrada, fecha de importación, filas procesadas del CSV, ventas añadidas e importes nativos exactos por moneda. La tabla presenta 50 líneas por página; su numeración pertenece al lote y los IDs locales no son pedidos de Cults. Reimportar un archivo ya registrado genera un lote vacío real. Las importaciones antiguas sin identificador de lote se indican expresamente. La lectura reutiliza `sales_batch_get {batch}` mediante `GET /api/sales/batch?batch=...`; abrir o reintentar no importa otra vez. No es un navegador de todo el histórico ni una confirmación de cobro.
+
 ## Catálogo
 
 Lee, sin modificar, las subcarpetas de `Desktop/Modelos/Contornos pokemon` y detecta cuáles tienen `cults3d.json`. Puedes cambiar la ubicación con `MERCATOR_PRODUCTS_DIR` en `.env`.

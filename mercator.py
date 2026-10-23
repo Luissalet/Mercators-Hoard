@@ -454,7 +454,7 @@ def summary() -> dict:
             WHERE observed_at >= ? ORDER BY observed_at
         """, ((datetime.now(timezone.utc) - timedelta(days=90)).isoformat(),))]
         all_sales = [dict(row) for row in conn.execute("SELECT * FROM sales ORDER BY sold_at DESC")]
-        last_import_row = conn.execute("SELECT imported_at, rows, added FROM sales_imports ORDER BY imported_at DESC LIMIT 1").fetchone()
+        last_import_row = conn.execute("SELECT imported_at, rows, added, batch FROM sales_imports ORDER BY imported_at DESC LIMIT 1").fetchone()
     aggregates_by_key: dict[tuple[str, str], dict] = {}
     monthly_by_key: dict[tuple[str, str], dict] = {}
     for sale in all_sales:
@@ -633,6 +633,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, summary())
             elif path == "/api/publishing/meta":
                 self._json(200, publishing_meta())
+            elif path == "/api/sales/batch":
+                import agent_tools
+                self._json(200, agent_tools.call_tool("sales_batch_get", {"batch": query.get("batch", "")}, cap=False))
             elif path == "/api/posts":
                 with reading() as conn:
                     listing = publishing.list_posts(conn, query.get("status", ""), query.get("platform", ""), query.get("from", ""),
