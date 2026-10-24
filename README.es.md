@@ -1,5 +1,14 @@
 # Mercator's Hoard
 
+En **Analítica web**, elige **Personalizado** y **Desde/Hasta** para consultar un
+intervalo explícito con la API/MCP25 de Plausible existente. Se envían las dos
+fechas ISO sin convertirlas; Plausible usa la zona de informes del sitio. Se
+conservan los periodos, agrupación, histórico guardado y exportación JSON. Cambiar
+los datos de consulta retira los resultados anteriores; un error conserva el
+borrador para reintentar. El copilot distingue el borrador de la consulta aplicada.
+Una petición ya enviada puede registrar su snapshot aunque cambie el formulario;
+no se cancela remotamente.
+
 En **Clientes**, abre una empresa guardada y pulsa **Ver sus oportunidades** para
 delimitar lista, resumen completo y exportaciones JSON/CSV a su ID real. Se muestra
 su nombre guardado al seleccionarla y su identidad; el nombre/notas sin guardar

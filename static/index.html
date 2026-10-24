@@ -61,7 +61,12 @@
         <form id="analytics-form" class="import-form">
           <label>Proyecto <input name="project" value="website" required pattern="[a-zA-Z0-9_-]{1,100}"></label>
           <label>Dominio en Plausible <input name="site_id" placeholder="mi-sitio.com" required maxlength="255"></label>
-          <label>Periodo <select name="date_range"><option value="7d">7 días</option><option value="30d" selected>30 días</option><option value="month">Este mes</option><option value="year">Este año</option></select></label>
+          <label>Periodo <select name="date_range"><option value="7d">7 días</option><option value="30d" selected>30 días</option><option value="month">Este mes</option><option value="year">Este año</option><option value="custom">Personalizado</option></select></label>
+          <div id="analytics-custom-dates" class="column-mapping" hidden>
+            <label>Desde <input name="date_from" type="date" disabled></label>
+            <label>Hasta <input name="date_to" type="date" disabled></label>
+          </div>
+          <p id="analytics-date-note" class="table-note" hidden>Se envían estas fechas tal como las eliges; Plausible aplica la zona de informes del sitio. Cambiar el formulario no cancela una consulta ya enviada ni su registro.</p>
           <label>Agrupar por <select name="dimension"><option value="">Total</option><option value="time:day">Día</option><option value="event:page">Página</option><option value="visit:source">Fuente de tráfico</option><option value="visit:country_name">País</option></select></label>
           <button type="submit" class="primary">Consultar y guardar</button>
           <button type="button" id="analytics-history">Ver consultas guardadas</button>

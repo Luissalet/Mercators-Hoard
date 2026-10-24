@@ -1,5 +1,13 @@
 # Mercator's Hoard
 
+In **Web analytics**, choose **Personalizado** and **Desde/Hasta** to query an
+explicit date range through existing Plausible API/MCP25. The two ISO dates are
+sent unchanged; Plausible uses the site's reporting timezone. Existing periods,
+grouping, saved history and JSON export remain available. Editing query inputs
+clears old results; errors retain the draft for retry. The copilot distinguishes
+draft fields from the applied saved query. A request already sent may still save
+its native snapshot after the form changes; it is not cancelled remotely.
+
 In **Customers**, open a saved company and choose **Ver sus oportunidades** to
 scope the opportunity list, full native summary and JSON/CSV exports to its actual
 ID. The visible company name is the saved name at selection time, with its ID;
