@@ -107,9 +107,17 @@
 
       <section id="catalogo" class="panel-section" aria-labelledby="catalog-title">
         <div class="section-head"><div><h2 id="catalog-title">Catálogo de productos</h2><p>Estado de los modelos preparados para Cults. La lectura de carpetas no modifica ningún producto.</p></div><span id="catalog-count" class="section-index">— productos</span></div>
-        <div class="catalog-tools"><div id="catalog-breakdown" class="catalog-breakdown"></div><label class="search-label">Buscar producto<input id="catalog-search" type="search" placeholder="Nombre del modelo…"></label></div>
-        <div class="table-wrap catalog-table"><table><thead><tr><th>Producto</th><th>Ficha Cults</th><th>Último cambio</th></tr></thead><tbody id="catalog-items"></tbody></table></div>
-        <p id="catalog-showing" class="table-note"></p>
+        <div id="catalog-breakdown" class="catalog-breakdown"></div>
+        <form id="catalog-filters" class="catalog-filters">
+          <label class="search-label">Buscar producto<input id="catalog-search" type="search" placeholder="Nombre o ID local…"></label>
+          <label class="search-label">Revisar<select id="catalog-mode"><option value="all">Todos</option><option value="untagged">Fichas sin etiquetas</option><option value="missing">Sin ficha o formato dañado</option></select></label>
+          <button id="catalog-apply" class="batch-button primary" type="submit">Filtrar</button>
+        </form>
+        <p class="table-note catalog-help">Estado de la ficha local, no de su publicación en Cults. Cada página lee el catálogo actual; los archivos no se modifican.</p>
+        <p id="catalog-status" role="status" aria-live="polite"></p>
+        <button id="catalog-retry" class="batch-button" type="button" hidden>Reintentar consulta</button>
+        <div class="table-wrap catalog-table" tabindex="0" role="region" aria-label="Resultados del catálogo"><table><thead><tr><th>Producto e ID local</th><th>Ficha local</th><th>Etiquetas</th><th>Último cambio</th></tr></thead><tbody id="catalog-items"></tbody></table></div>
+        <div class="catalog-pager"><p id="catalog-showing" class="table-note"></p><div><button id="catalog-prev" class="batch-button" type="button" disabled>Anterior</button> <button id="catalog-next" class="batch-button" type="button" disabled>Siguiente</button></div></div>
       </section>
     </main>
     <footer><span>Mercator’s Hoard</span><span>Datos locales · Las fuentes sin acceso aparecen como pendientes</span></footer>

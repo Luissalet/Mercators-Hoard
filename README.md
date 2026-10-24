@@ -46,6 +46,22 @@ Revenue is shown by currency. Different currencies are never summed, and revenue
 
 **View imported batch** (**Ver lote importado**) shows only the new sales saved by that import; **View latest batch** (**Ver último lote**) keeps the latest recorded batch available after reload. The panel shows its identity, registered source, import time, processed CSV rows, added sales and exact native amounts by currency. Its table displays 50 lines per page; line numbers belong to the batch, and local IDs are not Cults order numbers. Reimporting an already registered file creates a genuine empty batch. Older imports without a batch identifier say so. Reads use the existing `sales_batch_get {batch}` calculation through `GET /api/sales/batch?batch=...`; viewing or retrying does not import again. This is not a general import-history browser or proof of payment.
 
+## Catalogue review
+
+In **Catalogue**, search by title or local ID and choose **All**, **Listings without
+tags**, or **Missing listing or damaged format** (the UI currently uses Spanish
+labels). Press **Filtrar** to apply; **Anterior/Siguiente** browse native pages of
+50, with the returned range and total. Editing inputs clears old rows; retry keeps
+the requested page and fields. Refresh retains unapplied criteria and other open
+editor drafts. `GET /api/catalog` delegates the existing `mercator_catalog`
+API/MCP25 query without the assistant response cap; no separate browser filter is
+used. Its native `untagged` requires a listing with zero tags; `missing` covers an
+absent listing or the native invalid-format indicator. A wrong tag type can match
+both, and non-object JSON keeps native missing-listing defaults. These are local
+file/import indicators, not proof of publication or Cults validity. Each page
+reads the current catalogue; no stable snapshot across concurrent edits is
+promised. Viewing never edits files, imports from Vulcan or contacts Cults.
+
 ## Publishing
 
 The **Publication** page (`/publicacion`) plans and measures what you post.

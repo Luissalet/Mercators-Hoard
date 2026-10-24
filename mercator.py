@@ -636,6 +636,13 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/sales/batch":
                 import agent_tools
                 self._json(200, agent_tools.call_tool("sales_batch_get", {"batch": query.get("batch", "")}, cap=False))
+            elif path == "/api/catalog":
+                import agent_tools
+                flags = {key: {"true": True, "false": False}.get(query.get(key, "false"), query.get(key))
+                         for key in ("untagged", "missing")}
+                self._json(200, agent_tools.call_tool("mercator_catalog", {
+                    "query": query.get("query", ""), **flags,
+                    "offset": int(query.get("offset", 0)), "limit": int(query.get("limit", 25))}, cap=False))
             elif path == "/api/posts":
                 with reading() as conn:
                     listing = publishing.list_posts(conn, query.get("status", ""), query.get("platform", ""), query.get("from", ""),

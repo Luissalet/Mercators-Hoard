@@ -1,5 +1,20 @@
 # Mercator's Hoard
 
+En **Catálogo**, busca por título o ID local y elige **Todos**, **Fichas sin
+etiquetas** o **Sin ficha o formato dañado**. **Filtrar** aplica la consulta;
+**Anterior/Siguiente** recorren páginas nativas de50 filas con rango y total.
+Editar los criterios retira las filas anteriores; reintentar conserva la página
+solicitada y los campos. El refresco mantiene criterios pendientes y borradores
+de otros editores. `GET /api/catalog` delega `mercator_catalog` existente de
+API/MCP25 sin recorte de respuesta para la UI, sin filtro paralelo en navegador.
+El criterio nativo sin etiquetas exige ficha y cantidad0; el de ausencia/formato
+incluye ficha ausente o indicador nativo de formato inválido. Un tipo de etiquetas
+incorrecto puede coincidir con ambos; JSON no objeto conserva los valores nativos
+de ficha ausente. Son indicadores locales, no prueba de publicación ni validez en
+Cults. Cada página relee el catálogo actual, sin promesa de foto estable ante
+cambios simultáneos. Consultar no modifica fichas, importa de Vulcan ni contacta
+Cults.
+
 En **Analítica web**, elige **Personalizado** y **Desde/Hasta** para consultar un
 intervalo explícito con la API/MCP25 de Plausible existente. Se envían las dos
 fechas ISO sin convertirlas; Plausible usa la zona de informes del sitio. Se

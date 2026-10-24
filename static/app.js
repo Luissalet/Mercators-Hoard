@@ -4,6 +4,9 @@ let csvText = "";
 let dashboardRequest = 0;
 let latestBatch = "", importedBatch = "", batchId = "", batchResult = null, batchPage = 0, batchRequest = 0;
 const BATCH_PAGE_SIZE = 50;
+const CATALOG_PAGE_SIZE = 50;
+let catalogRequest = 0, catalogResult = null, catalogApplied = null, catalogAttempt = null;
+let catalogDirty = false, catalogBusy = false;
 
 function el(tag, className, value) {
   const node = document.createElement(tag);
@@ -179,19 +182,63 @@ function renderCatalog(data) {
   if (catalog.state === "ok") {
     $("#catalog-breakdown").append(el("span", "", number(catalog.with_listing)), document.createTextNode(` con ficha Cults · ${number(catalog.count - catalog.with_listing)} pendientes`));
   } else $("#catalog-breakdown").textContent = "No se encuentra la carpeta de modelos.";
-  filterCatalog();
+  if (!catalogDirty && !catalogBusy) void readCatalog(catalogAttempt?.args.offset || 0, catalogAttempt?.fields || catalogFields());
 }
-function filterCatalog() {
-  if (!dashboard) return;
-  const term = $("#catalog-search").value.trim().toLocaleLowerCase("es");
-  const matches = dashboard.catalog.items.filter(item => item.title.toLocaleLowerCase("es").includes(term) || item.id.toLocaleLowerCase("es").includes(term));
+function catalogFields() { return {query: $("#catalog-search").value, mode: $("#catalog-mode").value}; }
+function catalogButtons(busy) {
+  catalogBusy = busy;
+  $("#catalog-apply").disabled = busy;
+  $("#catalog-prev").disabled = busy || !catalogResult || catalogResult.offset === 0;
+  $("#catalog-next").disabled = busy || !catalogResult || catalogResult.offset + catalogResult.items.length >= catalogResult.total;
+  $("#catalog-items").setAttribute("aria-busy", String(busy));
+}
+function clearCatalog(text) {
+  catalogResult = null; catalogApplied = null;
+  $("#catalog-items").replaceChildren(); $("#catalog-showing").textContent = "";
+  $("#catalog-status").textContent = text; $("#catalog-retry").hidden = true;
+  catalogButtons(false);
+}
+function changeCatalog() {
+  catalogRequest++; catalogDirty = true; catalogAttempt = null;
+  clearCatalog("Consulta modificada. Pulsa Filtrar para aplicar los cambios.");
+}
+function showCatalog(data) {
   const body = $("#catalog-items"); body.replaceChildren();
-  for (const item of matches.slice(0, 80)) {
-    const row = el("tr"); const state = item.invalid_listing ? "Ficha dañada" : item.has_listing ? "Preparada" : "Pendiente";
-    row.append(el("td", "", item.title), el("td", item.has_listing ? "ok" : "pending", state), el("td", "", item.updated_at ? dateLabel(item.updated_at) : "—")); body.append(row);
+  for (const item of data.items) {
+    const row = el("tr"), product = el("td", "", item.title);
+    product.append(el("small", "catalog-id", `ID local: ${item.id}`));
+    const label = item.invalid_listing ? "Formato dañado" : item.has_listing ? "Ficha local" : "Sin ficha";
+    const changed = el("td", "", item.updated_at ? dateLabel(item.updated_at) : "—");
+    if (item.updated_at) changed.title = item.updated_at;
+    row.append(product, el("td", item.invalid_listing || !item.has_listing ? "pending" : "ok", label), el("td", "", item.tags ?? "—"), changed);
+    body.append(row);
   }
-  if (!matches.length) { const row = el("tr"), cell = el("td", "empty", "No hay productos con ese nombre."); cell.colSpan = 3; row.append(cell); body.append(row); }
-  $("#catalog-showing").textContent = `Mostrando ${number(Math.min(matches.length, 80))} de ${number(matches.length)} resultados${matches.length > 80 ? ". Acota la búsqueda para ver más." : "."}`;
+  if (!data.items.length) {
+    const row = el("tr"), cell = el("td", "empty", data.state !== "ok" ? "No hay acceso a la carpeta ni fichas importadas disponibles." : data.total ? "No hay filas en esta página. Vuelve a la anterior o aplica de nuevo los filtros." : "No hay productos que coincidan con esta consulta.");
+    cell.colSpan = 4; row.append(cell); body.append(row);
+  }
+  $("#catalog-showing").textContent = data.items.length ? `Resultados ${number(data.offset + 1)}–${number(data.offset + data.items.length)} de ${number(data.total)}` : `${number(data.total)} coincidencias`;
+}
+async function readCatalog(offset = 0, fields = catalogFields()) {
+  const request = ++catalogRequest;
+  const args = {query: fields.query, untagged: fields.mode === "untagged", missing: fields.mode === "missing", offset, limit: CATALOG_PAGE_SIZE};
+  catalogAttempt = {fields: {...fields}, args}; catalogDirty = false;
+  clearCatalog("Leyendo las fichas locales…"); catalogButtons(true);
+  try {
+    const response = await fetch("/api/catalog?" + new URLSearchParams(args));
+    const data = await response.json();
+    if (!response.ok || data.ok === false) throw new Error(data.error || "No se pudo leer el catálogo.");
+    if (request !== catalogRequest) return;
+    catalogResult = data;
+    catalogApplied = {fields: {...fields}, ...args, state: data.state, total: data.total, ids: data.items.map(item => item.id)};
+    showCatalog(data);
+    $("#catalog-status").textContent = data.state === "ok" ? "Consulta local completada." : "Catálogo sin acceso. Revisa la carpeta configurada o las fichas importadas y reintenta.";
+    $("#catalog-retry").hidden = data.state === "ok";
+  } catch (error) {
+    if (request !== catalogRequest) return;
+    $("#catalog-status").textContent = error.message;
+    $("#catalog-retry").hidden = false;
+  } finally { if (request === catalogRequest) catalogButtons(false); }
 }
 async function load() {
   const version = ++dashboardRequest;
@@ -253,7 +300,12 @@ $("#sales-import").addEventListener("submit", async event => {
   } catch (error) { message.textContent = error.message; }
   finally { button.disabled = false; }
 });
-$("#catalog-search").addEventListener("input", filterCatalog);
+$("#catalog-filters").addEventListener("submit", event => { event.preventDefault(); void readCatalog(); });
+$("#catalog-search").addEventListener("input", changeCatalog);
+$("#catalog-mode").addEventListener("change", changeCatalog);
+$("#catalog-retry").onclick = () => { if (catalogAttempt) void readCatalog(catalogAttempt.args.offset, catalogAttempt.fields); };
+$("#catalog-prev").onclick = () => { if (catalogResult && catalogApplied) void readCatalog(Math.max(0, catalogResult.offset - CATALOG_PAGE_SIZE), catalogApplied.fields); };
+$("#catalog-next").onclick = () => { if (catalogResult && catalogApplied) void readCatalog(catalogResult.offset + CATALOG_PAGE_SIZE, catalogApplied.fields); };
 $("#refresh").addEventListener("click", async event => {
   const button = event.currentTarget; button.disabled = true; $("#overall-status").textContent = "Consultando fuentes…";
   try { const response = await fetch("/api/refresh", {method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}); if (!response.ok) throw new Error("Falló la actualización"); await load(); }
@@ -268,7 +320,7 @@ window.mercatorCopilot?.register('dashboard', {
         mapping: Object.fromEntries([...$("#column-mapping").querySelectorAll('select')]
           .map(select => [select.name, select.value]))}}}};
     if (location.hash === '#catalogo') return {active_objects: [],
-      view: {query: $("#catalog-search").value}};
+      view: {catalog: {draft: catalogFields(), pending: catalogDirty, loading: catalogBusy, requested: catalogAttempt?.args || null, applied: catalogApplied}}};
     return null;
   },
   refresh() { void load(); },

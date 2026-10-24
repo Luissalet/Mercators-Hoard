@@ -116,6 +116,41 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(len(result["sales"]), 1)
         self.assertEqual(result["by_currency"], [{"currency": "EUR", "income": "12.50"}, {"currency": "USD", "income": "9.00"}])
 
+    def test_catalog_http_uses_native_filters_and_pages_without_changing_listings(self):
+        from urllib.parse import urlencode
+        root = Path(self.temp.name) / 'catalog-http'
+        root.mkdir()
+        for name, content in [('A-zero', '{"title":"Mismo ñ","tags":[]}'),
+                              ('B-bad-tags', '{"title":"Mismo ñ","tags":"wrong"}'),
+                              ('C-malformed', '{'), ('D-nonobject', '[]')]:
+            folder = root / name
+            folder.mkdir()
+            (folder / 'cults3d.json').write_text(content, encoding='utf8')
+        (root / 'E-missing').mkdir()
+        before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in root.rglob('cults3d.json')}
+        with patch.object(mercator, 'secrets', return_value={'MERCATOR_PRODUCTS_DIR': str(root)}), running_server() as port:
+            for args in [{'untagged': True}, {'missing': True}, {'untagged': True, 'missing': True},
+                         {'query': 'MISMO Ñ', 'offset': 1, 'limit': 1}]:
+                native = mercator.catalog_query(**args)
+                query = urlencode({k: str(v).lower() if isinstance(v, bool) else v for k, v in args.items()})
+                with closing(HTTPConnection('127.0.0.1', port, timeout=3)) as conn:
+                    conn.request('GET', '/api/catalog?' + query)
+                    response = conn.getresponse()
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(json.loads(response.read()), native)
+            self.assertEqual([r['id'] for r in mercator.catalog_query(untagged=True)['items']], ['A-zero', 'B-bad-tags'])
+            self.assertEqual([r['id'] for r in mercator.catalog_query(missing=True)['items']], ['B-bad-tags', 'C-malformed', 'D-nonobject', 'E-missing'])
+            with closing(HTTPConnection('127.0.0.1', port, timeout=3)) as conn:
+                conn.request('GET', '/api/catalog?untagged=perhaps')
+                response = conn.getresponse()
+                self.assertEqual(response.status, 400)
+                response.read()
+        self.assertEqual(before, {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in before})
+        with patch.object(mercator, 'secrets', return_value={'MERCATOR_PRODUCTS_DIR': str(root / 'not-here')}):
+            self.assertEqual(mercator.catalog_query()['state'], 'needs_access')
+        with patch.object(mercator, 'secrets', return_value={'MERCATOR_PRODUCTS_DIR': str(root)}):
+            self.assertEqual(mercator.catalog_query(query='not found')['state'], 'ok')
+
     @unittest.skipUnless(HAVE_MCP, "the stdio bridge needs the mcp package")
     def test_mcp_stdio_reads_isolated_catalog_without_modifying_it(self):
         root = Path(self.temp.name) / "products"
