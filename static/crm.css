@@ -12,6 +12,7 @@
 .crm-summary p{margin:.4rem 0;max-width:75ch}.crm-summary strong{color:var(--bright)}
 .crm-table{min-width:700px}.crm-table th,.crm-table td{text-align:left;vertical-align:top}.crm-table td:nth-child(4){white-space:nowrap;font-variant-numeric:tabular-nums}.crm-table small{display:block;color:var(--quiet);margin-block-start:.35rem;max-width:32ch;overflow-wrap:anywhere}.crm-table button{text-align:left}
 .crm-company-list{display:flex;flex-wrap:wrap;gap:.7rem;margin-block:1rem}
+.crm-company-scope{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1rem;margin-block:1rem;padding-block:1rem;border-block:1px solid var(--line);min-width:0}.crm-company-scope[hidden]{display:none}.crm-company-scope p{margin:0;min-width:0;overflow-wrap:anywhere}.crm-company-scope .crm-help{flex-basis:100%}#crm-company-id{display:block;color:var(--quiet);font-size:.85rem;margin-top:.35rem;overflow-wrap:anywhere}
 #crm-editor{margin-block-start:2rem;border-top:1px solid var(--line);padding-block-start:1.5rem}#crm-editor[hidden]{display:none}
 #crm-editor h3{font-family:var(--hoard-font-serif);font-size:1.5rem;margin:0 0 1rem}
 .crm-fields{grid-template-columns:repeat(2,minmax(0,1fr));max-width:900px}.crm-fields .crm-wide{grid-column:1/-1}

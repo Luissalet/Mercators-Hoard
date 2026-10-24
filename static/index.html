@@ -36,12 +36,18 @@
       <section id="crm" class="panel-section" aria-labelledby="crm-title">
         <div class="section-head"><div><h2 id="crm-title">Clientes y oportunidades</h2><p>Servicios de IA, desarrollo y encargos 3D. Sigue cada propuesta por proyecto y conserva las interacciones reales.</p></div></div>
         <form id="crm-filters" class="crm-controls">
+          <input type="hidden" name="company_id" value="">
           <label>Proyecto<input name="project" placeholder="Todos los proyectos" maxlength="200"></label>
           <label>Responsable<input name="owner" placeholder="Todos" maxlength="200"></label>
           <label>Etapa<select name="stage"><option value="">Todas</option></select></label>
           <label>Buscar<input name="q" type="search" placeholder="Empresa u oportunidad" maxlength="200"></label>
           <button type="submit">Filtrar</button>
         </form>
+        <div id="crm-company-scope" class="crm-company-scope" hidden>
+          <p><strong>Empresa seleccionada: <span id="crm-company-name"></span></strong><span id="crm-company-id"></span></p>
+          <button id="crm-all-companies" type="button">Todas las empresas</button>
+          <p class="crm-help">Lista, resumen y exportaciones usan esta empresa y los demás filtros. El resumen incluye todas las coincidencias, no sólo la página visible.</p>
+        </div>
         <div class="crm-actions"><button id="crm-new-company" type="button">Añadir empresa</button><button id="crm-new-deal" type="button">Añadir oportunidad</button><button id="crm-export-json" type="button">Exportar JSON</button><button id="crm-export-csv" type="button">Exportar CSV</button></div>
         <p id="crm-message" role="status" aria-live="polite"></p>
         <div id="crm-summary" class="crm-summary"></div>

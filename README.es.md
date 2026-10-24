@@ -1,5 +1,17 @@
 # Mercator's Hoard
 
+En **Clientes**, abre una empresa guardada y pulsa **Ver sus oportunidades** para
+delimitar lista, resumen completo y exportaciones JSON/CSV a su ID real. Se muestra
+su nombre guardado al seleccionarla y su identidad; el nombre/notas sin guardar
+siguen en el editor. **Todas las empresas** retira sólo ese ámbito y conserva
+proyecto/responsable/etapa/texto. Los homónimos no se mezclan y cero coincidencias
+sigue siendo cero. Aplicar o reintentar lecturas no guarda ni reconstruye la ficha
+abierta. Cambiar filtros retira resultados antiguos; pulsa **Filtrar** para aplicar
+o reintentar. Usa `company_id` nativo compartido con API/MCP25: resumen/exportación
+incluyen todas las coincidencias, tabla de50porpágina. Importes estimados separados
+por moneda; ganado no equivale a cobrado. El ámbito sólo vive en la página, sin
+persistencia nueva ni servicio CRM externo.
+
 **Publicación → Desde un medio** crea o localiza una publicación mediante `post_draft_from_media` existente. Referencia y título son obligatorios por su contrato API/MCP; la plataforma es opcional y usa la predeterminada nativa al crear. Título/plataforma sólo se aplican a un borrador nuevo. Una coincidencia no archivada por referencia exacta se devuelve intacta, aunque esté publicada o en otra plataforma; prevalece el menor ID coincidente. Si sólo hay archivadas, permite un borrador nuevo. El resultado muestra ID/título/plataforma/estado reales y ofrece **Abrir publicación** explícito. Abrir/cerrar el formulario no escribe; enviar puede guardar un borrador, y cerrar/cambiar campos no cancela una petición ya enviada. No resuelve/sube medios ni publica en redes. Un error conserva los campos; editarlos o refrescar retira resultados anteriores sin sustituir el borrador de un editor abierto.
 
 En una oportunidad del CRM, el formulario de interacción admite fecha/hora ISO opcional con zona explícita (`Z` o un desfase como `+02:00`). Vacía usa la hora del servidor al guardar. La API/MCP `crm_activity_add` existente la registra como `observed_at` y guarda aparte la hora de registro `recorded_at`; el historial rotula ambas y mantiene su orden nativo por registro más reciente y su vista de 200 entradas. Anota una interacción ocurrida, sin enviar mensajes ni avisos. Un fallo conserva nota/fuente/fecha y reutiliza el ID nativo en el reintento idéntico. Guardar la interacción conserva los campos pendientes de la oportunidad y las ediciones posteriores de la interacción.

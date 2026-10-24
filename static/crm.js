@@ -50,17 +50,20 @@
   function lock(value) {busy=value; for(const button of root.querySelectorAll('button')) button.disabled=value; if(!value){$('#crm-prev').disabled=offset===0;$('#crm-next').disabled=offset+50>=total;}}
   async function work(fn) {
     if(busy) return; lock(true); message.textContent='Cargando…';
-    try {await fn(); message.textContent='Operación completada.';} catch(e){message.textContent=e.message;}
+    try {if(await fn()!==false)message.textContent='Operación completada.';} catch(e){message.textContent=e.message;}
     finally {lock(false);}
   }
   async function load() {
-    const version=++loadVersion, qs=query(); qs.set('offset',offset);qs.set('limit',50);
-    const [listing, stats] = await Promise.all([request('/api/crm?'+qs),request('/api/crm/summary?'+query())]);
-    if(version!==loadVersion)return;
-    total=Math.max(listing.deal_total,listing.company_total);$('#crm-count').textContent=`${listing.deal_total} oportunidades · ${listing.company_total} empresas en este filtro`;
+    const version=++loadVersion, scope=query().toString(), page=offset, qs=new URLSearchParams(scope); qs.set('offset',page);qs.set('limit',50);
+    clearListing('Leyendo oportunidades con los filtros actuales…');
+    let listing,stats;
+    try { [listing,stats]=await Promise.all([request('/api/crm?'+qs),request('/api/crm/summary?'+scope)]); }
+    catch(error) {if(version!==loadVersion || scope!==query().toString() || page!==offset)return false;clearListing('No se pudieron leer las oportunidades. Pulsa Filtrar para reintentar.');throw error;}
+    if(version!==loadVersion || scope!==query().toString() || page!==offset)return false;
+    total=Math.max(listing.deal_total,listing.company_total);$('#crm-count').textContent=`${listing.deal_total} ${listing.deal_total===1?'oportunidad':'oportunidades'} · ${listing.company_total} ${listing.company_total===1?'empresa':'empresas'} en este filtro`;
     $('#crm-page').textContent=total ? `Página ${Math.floor(offset/50)+1} de ${Math.ceil(total/50)}` : 'Sin registros';
     const table=$('#crm-deals');table.replaceChildren();
-    if(!listing.deals.length){const tr=node('tr'),td=node('td',total?'No hay más resultados en esta página.':'Añade una empresa y su primera oportunidad, o cambia los filtros.');td.colSpan=5;tr.append(td);table.append(tr);}
+    if(!listing.deals.length){const tr=node('tr'),td=node('td',filters.elements.company_id.value?'No hay oportunidades de esta empresa con los filtros actuales.':total?'No hay más resultados en esta página.':'Añade una empresa y su primera oportunidad, o cambia los filtros.');td.colSpan=5;tr.append(td);table.append(tr);}
     for(const row of listing.deals){const tr=node('tr');const first=node('td'),button=node('button',row.title);button.type='button';button.onclick=()=>void work(()=>edit('deal',row.id));first.append(button,node('small',row.company_name));tr.append(first,node('td',row.project||'Sin proyecto'),node('td',labels[row.stage]),node('td',`${row.amount} ${row.currency}`));const next=node('td',row.next_action||'Sin próxima acción');next.append(node('small',row.due_on||'Sin fecha'));tr.append(next);table.append(tr);}
     const companies=$('#crm-companies');companies.replaceChildren();
     for(const row of listing.companies){const button=node('button',row.name);button.type='button';button.onclick=()=>void work(()=>edit('company',row.id));companies.append(button);}
@@ -68,6 +71,18 @@
     const summary=$('#crm-summary');summary.replaceChildren(node('p',stats.note));
     for(const [currency, values] of Object.entries(stats.currencies)){const line=node('p');line.append(node('strong',currency+' · '),node('span',`Abierto ${values.open} · Ponderado ${values.weighted} · Ganado ${values.won}`));summary.append(line);}
     lock(busy);
+  }
+  function clearListing(text) {
+    total=0;$('#crm-count').textContent=text;$('#crm-page').textContent='';
+    $('#crm-deals').replaceChildren();$('#crm-summary').replaceChildren();$('#crm-companies').replaceChildren();
+    $('#crm-prev').disabled=true;$('#crm-next').disabled=true;
+  }
+  function companyScope(company) {
+    filters.elements.company_id.value=company?.id||'';
+    $('#crm-company-scope').hidden=!company;
+    $('#crm-company-name').textContent=company?.name||'';
+    $('#crm-company-id').textContent=company?'ID: '+company.id:'';
+    offset=0;void work(load);
   }
   function field(form,key,label,value,type='text',options=null,required=false) {
     const wrap=node('div'),caption=node('label',label),input=node(options?'select':type==='textarea'?'textarea':'input');
@@ -114,7 +129,9 @@
     }
     field(grid,'people_ref','Contacto en People (hoard://people/…)',row.people_ref);
     field(grid,'source_ref','Fuente (referencia Hoard)',row.source_ref);field(grid,'notes','Notas',row.notes,'textarea');
-    const actions=node('div');actions.className='crm-actions';const save=node('button','Guardar'),cancel=node('button','Cerrar editor');save.type='submit';save.className='primary';cancel.type='button';cancel.onclick=()=>{editor.hidden=true;editor.replaceChildren();};actions.append(save,cancel);form.append(actions);
+    const actions=node('div');actions.className='crm-actions';const save=node('button','Guardar'),cancel=node('button','Cerrar editor');save.type='submit';save.className='primary';cancel.type='button';cancel.onclick=()=>{editor.hidden=true;editor.replaceChildren();};actions.append(save,cancel);
+    if(kind==='company'&&id){const related=node('button','Ver sus oportunidades');related.type='button';related.onclick=()=>companyScope({id:row.id,name:row.name});actions.append(related);}
+    form.append(actions);
     formBaseline = values(form);
     for (const [key,value] of Object.entries(pending)) {
       const input = form.elements.namedItem(key);
@@ -170,6 +187,8 @@
     lock(busy);
   }
   filters.onsubmit=e=>{e.preventDefault();offset=0;void work(load);};
+  filters.addEventListener('input',()=>{loadVersion++;clearListing('Filtros pendientes de aplicar');message.textContent='Pulsa Filtrar para aplicar los cambios.';});
+  $('#crm-all-companies').onclick=()=>companyScope(null);
   $('#crm-new-company').onclick=()=>void work(()=>edit('company'));
   $('#crm-new-deal').onclick=()=>void work(()=>edit('deal'));
   $('#crm-prev').onclick=()=>{offset=Math.max(0,offset-50);void work(load);};

@@ -1,5 +1,17 @@
 # Mercator's Hoard
 
+In **Customers**, open a saved company and choose **Ver sus oportunidades** to
+scope the opportunity list, full native summary and JSON/CSV exports to its actual
+ID. The visible company name is the saved name at selection time, with its ID;
+unsaved name/notes stay in the editor. **Todas las empresas** removes only this
+scope and retains project/owner/stage/text filters. Matching is by identity, so
+same-named companies remain separate; no matches stay empty. Applying or retrying
+reads does not save or rebuild an open editor. Changed filters clear old results;
+press **Filtrar** to apply or retry. The existing native `company_id` filter is
+shared by API/MCP25; summary/export cover all matches, while the table pages50.
+Amounts remain owner estimates, separated by currency; won is not collected cash.
+The scope is local to this page, with no new persistence or external CRM service.
+
 **Publication → From media** (**Desde un medio**) creates or locates a publication using the existing `post_draft_from_media` capability. Media reference and title are required by its API/MCP contract; platform is optional and uses the native default when creating. Title/platform apply only to a new draft. An existing non-archived exact-reference match is returned unchanged, even if published or on another platform; the lowest matching ID wins. An archived-only match allows a new draft. The result shows its actual ID/title/platform/status and offers **Open publication** explicitly. Opening/closing the form writes nothing; submitting can create a saved draft, and closing/changing fields cannot cancel an already sent request. No media resolution/upload or social publication occurs. Errors keep the fields; changing fields or refreshing clears old results without replacing an open editor's draft.
 
 In a CRM opportunity, the interaction form accepts an optional ISO date/time with an explicit zone (`Z` or an offset such as `+02:00`). Leave it empty to use server time when saving. The existing `crm_activity_add` API/MCP records this as `observed_at` and records entry time separately as `recorded_at`; the history labels both and keeps its native newest-recorded-first order and 200-entry view. This logs an interaction that occurred; it sends no message or reminder. Failed saves retain note/source/date and reuse the native request ID for an unchanged retry. Saving an interaction preserves unsaved opportunity fields and later interaction edits.
