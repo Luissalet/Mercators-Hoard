@@ -1,5 +1,7 @@
 # Mercator's Hoard
 
+Las capturas de **Analítica web** ofrecen **Volver a consultar y guardar** con su consulta y proyecto completos, incluidos filtros, orden y paginación, sin sustituir el borrador del formulario. Se usa la fuente Plausible configurada actualmente: los periodos relativos se evalúan de nuevo y las fechas fijas se conservan. El resultado muestra origen/ID/fecha reales. Si coincide con una captura existente (`added=false`), conserva su ID/fecha; no inventa una nueva lectura. Los errores mantienen un reintento de la misma consulta; editar el formulario o cambiar contexto retira resultados/reintento anteriores. Una petición ya enviada puede acabar guardando su captura nativa. API/MCP25 y límites existentes se conservan.
+
 En **Catálogo**, busca por título o ID local y elige **Todos**, **Fichas sin
 etiquetas** o **Sin ficha o formato dañado**. **Filtrar** aplica la consulta;
 **Anterior/Siguiente** recorren páginas nativas de50 filas con rango y total.

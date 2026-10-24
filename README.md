@@ -1,5 +1,7 @@
 # Mercator's Hoard
 
+Saved **Web analytics** snapshots offer **Volver a consultar y guardar** to rerun their full stored query and project, including filters, ordering and pagination, without replacing the form's draft. The action uses the currently configured Plausible source; relative periods are evaluated again, fixed date ranges are retained. The result shows its actual origin/ID/date. Identical native captures retain their existing ID/date (`added=false`); no new observation is invented. Errors retain a same-query retry; editing the form or changing context clears old results/retry. An already sent request can still finish and store its native capture. Existing API/MCP25 and limits stay unchanged. This interface retains its existing Spanish labels.
+
 In **Web analytics**, choose **Personalizado** and **Desde/Hasta** to query an
 explicit date range through existing Plausible API/MCP25. The two ISO dates are
 sent unchanged; Plausible uses the site's reporting timezone. Existing periods,
