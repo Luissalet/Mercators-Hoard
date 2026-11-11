@@ -126,3 +126,7 @@ La herramienta reutiliza el historial local sin dependencias nuevas. Las [defini
 ## Ampliación de la familia · 2026-10-04
 
 `plausible_query` consulta Plausible v2 y conserva consulta, respuesta, origen y fecha; `plausible_history` recupera el historial. La pestaña Analítica usa los mismos handlers, conserva dimensiones, monedas y nulos y exporta JSON. Configura `PLAUSIBLE_API_KEY` y opcionalmente `PLAUSIBLE_URL`. Hace falta acceso API de la edición/cuenta. Admite periodos, fechas, métricas y dimensiones, hasta 1000 filas; aún no expone filtros ni páginas adicionales. No instala rastreo ni inventa métricas.
+
+## Skills para los agentes que se conectan
+
+Esta app lleva procedimientos de la biblioteca de skills del espacio de trabajo de la familia para los agentes que se conectan: `catalogue-and-sales-metrics`, `measured-improvement`. Aparecen en lo que el agente lee al conectarse, se leen con `skills_list` y `skill_read`, se buscan y asignan con `skills_library` y `skills_assign`, y se ofrecen como prompts. Se eligen en la página de skills (`/api/agent/skills/page`) o en la pestaña Skills del hub; el bloque `skills` de `faustus-plugin.json` guarda lo que la app pide por defecto.

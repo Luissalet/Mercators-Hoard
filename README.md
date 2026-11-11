@@ -115,3 +115,7 @@ The server binds only to `127.0.0.1` and runs the family's request guard (`hoard
 ## Family expansion · 2026-10-04
 
 `plausible_query` reads [Plausible Stats API v2](https://plausible.io/docs/stats-api) and saves the exact query, response, origin and observation time; `plausible_history` lists saved snapshots. The Analytics tab uses the same handlers, keeps dimensions/currencies/null values and exports JSON. Configure `PLAUSIBLE_API_KEY` and optionally `PLAUSIBLE_URL` (HTTPS remote or HTTP loopback origin). Account/edition must provide API access. Queries support periods or date pairs, metrics, dimensions and up to 1000 rows; nested filters, ordering and explicit pagination are supported; each snapshot preserves its offset. No tracking script or fabricated website metrics is installed.
+
+## Skills for the agents that connect
+
+This app carries procedures from the skill library of the family's workspace for the agents that connect to it: `catalogue-and-sales-metrics`, `measured-improvement`. They are named in what an agent reads on connecting, read with `skills_list` and `skill_read`, searched and assigned with `skills_library` and `skills_assign`, and offered as prompts. The person chooses them on the skills page (`/api/agent/skills/page`) or in the hub's Skills tab; the `skills` block of `faustus-plugin.json` holds what the app asks for by default.
