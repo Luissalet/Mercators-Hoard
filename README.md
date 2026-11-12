@@ -1,121 +1,92 @@
 # Mercator's Hoard
 
-Saved **Web analytics** snapshots offer **Volver a consultar y guardar** to rerun their full stored query and project, including filters, ordering and pagination, without replacing the form's draft. The action uses the currently configured Plausible source; relative periods are evaluated again, fixed date ranges are retained. The result shows its actual origin/ID/date. Identical native captures retain their existing ID/date (`added=false`); no new observation is invented. Errors retain a same-query retry; editing the form or changing context clears old results/retry. An already sent request can still finish and store its native capture. Existing API/MCP25 and limits stay unchanged. This interface retains its existing Spanish labels.
+A local dashboard that follows WatchHoard and BookHoard usage, Cults product listings and sales, publications and their metrics, web analytics, and a small CRM of companies and opportunities.
 
-In **Web analytics**, choose **Personalizado** and **Desde/Hasta** to query an
-explicit date range through existing Plausible API/MCP25. The two ISO dates are
-sent unchanged; Plausible uses the site's reporting timezone. Existing periods,
-grouping, saved history and JSON export remain available. Editing query inputs
-clears old results; errors retain the draft for retry. The copilot distinguishes
-draft fields from the applied saved query. A request already sent may still save
-its native snapshot after the form changes; it is not cancelled remotely.
+[Leer en español](README.es.md)
 
-In **Customers**, open a saved company and choose **Ver sus oportunidades** to
-scope the opportunity list, full native summary and JSON/CSV exports to its actual
-ID. The visible company name is the saved name at selection time, with its ID;
-unsaved name/notes stay in the editor. **Todas las empresas** removes only this
-scope and retains project/owner/stage/text filters. Matching is by identity, so
-same-named companies remain separate; no matches stay empty. Applying or retrying
-reads does not save or rebuild an open editor. Changed filters clear old results;
-press **Filtrar** to apply or retry. The existing native `company_id` filter is
-shared by API/MCP25; summary/export cover all matches, while the table pages50.
-Amounts remain owner estimates, separated by currency; won is not collected cash.
-The scope is local to this page, with no new persistence or external CRM service.
+## What it is
 
-**Publication → From media** (**Desde un medio**) creates or locates a publication using the existing `post_draft_from_media` capability. Media reference and title are required by its API/MCP contract; platform is optional and uses the native default when creating. Title/platform apply only to a new draft. An existing non-archived exact-reference match is returned unchanged, even if published or on another platform; the lowest matching ID wins. An archived-only match allows a new draft. The result shows its actual ID/title/platform/status and offers **Open publication** explicitly. Opening/closing the form writes nothing; submitting can create a saved draft, and closing/changing fields cannot cancel an already sent request. No media resolution/upload or social publication occurs. Errors keep the fields; changing fields or refreshing clears old results without replacing an open editor's draft.
+Mercator keeps the numbers of the projects in one place, on this computer only. History is stored in `data/mercator.sqlite3`; nothing is sent anywhere. The interface labels are in Spanish. Figures are always shown with their origin and date, and a source that cannot be read is marked pending instead of presenting an older value as current.
 
-In a CRM opportunity, the interaction form accepts an optional ISO date/time with an explicit zone (`Z` or an offset such as `+02:00`). Leave it empty to use server time when saving. The existing `crm_activity_add` API/MCP records this as `observed_at` and records entry time separately as `recorded_at`; the history labels both and keeps its native newest-recorded-first order and 200-entry view. This logs an interaction that occurred; it sends no message or reminder. Failed saves retain note/source/date and reuse the native request ID for an unchanged retry. Saving an interaction preserves unsaved opportunity fields and later interaction edits.
+## What it does
 
-[Español](README.es.md)
+**Active projects**
+- On launch and every six hours, reads Supabase Auth user counts and Cloudflare Worker requests and errors for WatchHoard and BookHoard. **Refresh data** triggers an early read.
 
-A local dashboard for WatchHoard and BookHoard usage, Cults product listings and sales imported from Cults. It stores history only on this computer in `data/mercator.sqlite3`.
+**Cults sales**
+- Import a sales CSV exported from Cults: map the date, product and revenue columns (currency and sale ID are optional); comma, semicolon and tab separators work. Re-importing the same file never counts sales twice.
+- Amounts and dates follow the family's rules (`1.234,56`, `1,234.56`, `(12.00)`, `28/09/2026`, `2026-09-28`, `Sep 14, 2026`...). The decimal mark is taken from the whole column; a date without a year is refused, never guessed.
+- Revenue is shown per currency. Currencies are never summed and revenue is not presented as profit.
+- **Ver lote importado** / **Ver último lote** show the sales added by one import: source, time, processed rows, added sales and amounts per currency, 50 lines per page. Viewing never imports again.
 
-## Open
+**Product catalogue**
+- Reads, without modifying, the product folders under `Desktop/Modelos/Contornos pokemon` (or the folder set in `MERCATOR_PRODUCTS_DIR`) and detects their `cults3d.json` files.
+- Search by title or local ID and filter by all, listings without tags, or missing listing / damaged format, in native pages of 50. These are local file indicators, not proof of publication.
+- `catalog_from_vulcan` asks Vulcan for its listings catalogue and upserts it (needs Vulcan running).
 
-Run `python mercator.py` and open [http://127.0.0.1:5195](http://127.0.0.1:5195). Hoard Hub can also start it from `faustus-plugin.json` and open a dedicated window.
+**Publication** (`/publicacion`)
+- Posts with platform (Instagram Reel/post, TikTok, YouTube Short/video, X, Cults3D, other), title, caption, hashtags, media reference, status (idea, draft, scheduled, published, archived), dates, URL and notes. The media reference can be `hoard://lumiere/render/<id>`, `hoard://prospero/production/<id>`, `hoard://vulcan/model/<id>` or a file path; images and videos get a preview.
+- Week or month calendar and a board by status; per-platform character counter and a copy-caption button.
+- **Desde un medio** creates or finds a draft for a media reference (an existing non-archived match is returned unchanged). **Usar como base** opens a new editable draft from a saved publication without carrying over dates, URL or metrics.
+- **Descargar programadas (.ics)** exports the scheduled posts of the visible calendar and filters for your agenda; it does not synchronise or publish. See [docs/calendar-export.md](docs/calendar-export.md).
+- Metrics: add snapshots by hand (views, likes, comments, shares, saves, sales, revenue) or import a CSV per platform with an editable column mapping (presets for YouTube Studio, Instagram and TikTok exports are heuristic: review the mapping). Charts per post, totals per platform and best hours to post.
+- **Comparar crecimiento**: compares the latest whole snapshot at or before two dates (or first to last), with actual readings, signed changes and percentages. Missing values stay empty, zero baselines have no percentage, different currencies are explained. These are changes between saved observations, not live platform analytics or profit.
+- Caption suggestions appear only when a language model is already reachable; nothing depends on it.
 
-On launch and every six hours while running, Mercator reads Supabase Auth user counts and Cloudflare Worker requests and errors. **Refresh data** triggers an early read. The dashboard shows the last stored reading; a source without access is marked pending instead of presenting an older value as current.
+**Web analytics**
+- Queries the Plausible Stats API v2 and saves the exact query, response, origin and time. Supports relative periods or an explicit date range (**Personalizado**), metrics, dimensions, nested filters, ordering and pagination up to 1000 rows. Saved snapshots can be queried again with their full stored query, and exported as JSON. No tracking script is installed. Needs `PLAUSIBLE_API_KEY` (and optionally `PLAUSIBLE_URL`, an HTTPS remote or HTTP loopback origin).
 
-## Credentials
+**Customers (CRM)**
+- Companies and opportunities (stages: lead, qualified, proposal, negotiation, won, lost, archived) for AI, development and 3D commissions, with project, owner and references; filter by project, owner, stage and text. **Ver sus oportunidades** scopes the list, summary and exports to one company.
+- Interaction history per opportunity: an optional ISO date/time with explicit zone is stored as `observed_at`, separately from the entry time. It logs an interaction that happened; it sends nothing.
+- Summary by stage and currency (owner estimates; won is not collected cash) and JSON/CSV export.
+- Forms save only the changed fields, so concurrent changes by an agent to other fields survive.
 
-Mercator reads `WatchHoard/watchhoard/.env` for WatchHoard. BookHoard's public key cannot count Auth users. To enable that count and Worker metrics, copy `.env.example` to `.env` and fill in the local values. Do not enter credentials into the UI or commit them. Cloudflare requires an Analytics read token for the relevant account; separate account and token settings are supported for WatchHoard and BookHoard.
+## How to run it
 
-## Cults sales and catalogue
+Run `python mercator.py` and open [http://127.0.0.1:5195](http://127.0.0.1:5195), or let Hoard Hub start it and open its own window. The server binds only to `127.0.0.1` and applies the family's request guard (loopback `Host` and `Origin` with the server's port; extra host names go in `MERCATOR_ALLOWED_HOSTS`).
 
-Export a sales CSV from Cults, select it in **Sales**, and map the date, product and revenue columns. Currency and sale ID are optional. Comma, semicolon and tab separators are supported. Reimporting the same file does not count sales twice, including repeated identical rows without IDs. Amounts and dates are read with the family's rules (`hoard_link.money` / `hoard_link.dates`): `1.234,56`, `1,234.56`, `(12.00)`, `12 â‚¬` and `28/09/2026`, `2026-09-28`, `5 sept 2026`, `Sep 14, 2026`; the decimal mark is taken from the whole column, a lone `1.234` is 1234 (unless the row's currency writes dots as decimals, like USD) and a date without a year is refused, never guessed.
+Credentials: Mercator reads `WatchHoard/watchhoard/.env` for WatchHoard. To count BookHoard's Auth users and read Worker metrics, copy `.env.example` to `.env` and fill in the local values (Cloudflare needs an Analytics read token; WatchHoard and BookHoard have separate account and token settings). Never type credentials into the UI or commit them.
 
-Revenue is shown by currency. Different currencies are never summed, and revenue is not presented as net profit. Mercator does not fetch Cults sales directly because no verified API and sales schema are configured. It also reads, without modifying, product folders under `Desktop/Modelos/Contornos pokemon` and detects `cults3d.json` files. Set `MERCATOR_PRODUCTS_DIR` in `.env` to choose another folder.
+Environment: `MERCATOR_DATA_DIR`, `MERCATOR_PRODUCTS_DIR`, `MERCATOR_PORT`, `MERCATOR_FAUSTUS_URL`.
 
-**View imported batch** (**Ver lote importado**) shows only the new sales saved by that import; **View latest batch** (**Ver último lote**) keeps the latest recorded batch available after reload. The panel shows its identity, registered source, import time, processed CSV rows, added sales and exact native amounts by currency. Its table displays 50 lines per page; line numbers belong to the batch, and local IDs are not Cults order numbers. Reimporting an already registered file creates a genuine empty batch. Older imports without a batch identifier say so. Reads use the existing `sales_batch_get {batch}` calculation through `GET /api/sales/batch?batch=...`; viewing or retrying does not import again. This is not a general import-history browser or proof of payment.
+## Connection with Faustus and the Hub
 
-## Catalogue review
+The plugin manifest is `faustus-plugin.json` (family contract, `x-family`). Tools are served at `GET /api/agent/tools` and `POST /api/agent/call` (bearer token in `data/mcp-token`, created on first start) and through the stdio bridge `python mcp_server.py`, which needs `pip install -r requirements.txt`. The bridge forwards every call to the running dashboard and starts `python -m mercator` itself when nothing answers (`MERCATOR_BRIDGE_AUTOSTART=0` disables that; `MERCATOR_URL`, `MERCATOR_PORT`, `MERCATOR_DATA_DIR`, `MERCATOR_TOKEN_FILE` say where the server is).
 
-In **Catalogue**, search by title or local ID and choose **All**, **Listings without
-tags**, or **Missing listing or damaged format** (the UI currently uses Spanish
-labels). Press **Filtrar** to apply; **Anterior/Siguiente** browse native pages of
-50, with the returned range and total. Editing inputs clears old rows; retry keeps
-the requested page and fields. Refresh retains unapplied criteria and other open
-editor drafts. `GET /api/catalog` delegates the existing `mercator_catalog`
-API/MCP25 query without the assistant response cap; no separate browser filter is
-used. Its native `untagged` requires a listing with zero tags; `missing` covers an
-absent listing or the native invalid-format indicator. A wrong tag type can match
-both, and non-object JSON keeps native missing-listing defaults. These are local
-file/import indicators, not proof of publication or Cults validity. Each page
-reads the current catalogue; no stable snapshot across concurrent edits is
-promised. Viewing never edits files, imports from Vulcan or contacts Cults.
+Tools by group:
+- Catalogue and sales: `mercator_catalog`, `mercator_sales`, `sales_batch_get`, `catalog_from_vulcan`.
+- Publication: `posts_list`, `post_get`, `post_upsert`, `post_schedule`, `post_publish`, `post_draft_from_media`, `post_caption_suggest`, `post_metrics_add`, `post_metrics_compare`, `posts_stats`, `posts_calendar_export`.
+- Analytics: `plausible_query`, `plausible_history`.
+- CRM: `crm_list`, `crm_get`, `crm_company_save`, `crm_deal_save`, `crm_patch`, `crm_activity_add`, `crm_summary`, `crm_export`.
 
-## Publishing
+Assistant answers are capped at 20 000 bytes (`truncated` says what was left out); the web page gets everything. Errors come as `{ok: false, error, code}`.
 
-The **Publication** page (`/publicacion`) plans and measures what you post.
+Events: `mercator.post.scheduled`, `mercator.post.published`, `mercator.post.drafted`, `mercator.sales.imported {batch}` (so a hub rule can record the income). `GET /api/family/agenda` returns the scheduled posts (kind `publish`) with the same token.
 
-- **Posts** have a platform (Instagram Reel/post, TikTok, YouTube Short/video, X, Cults3D, other), title, caption, hashtags, media reference, status (idea, draft, scheduled, published, archived), scheduled/published dates, URL and notes. The media reference is a `hoard://lumiere/render/<id>`, `hoard://prospero/production/<id>`, `hoard://vulcan/model/<id>` reference or a file path; a servable image or video path gets a preview.
-- **Calendar** (week or month) and **board** by status. The editor shows a per-platform character counter (reference limits, not guarantees) and a copy-caption button.
-- **Calendar download**: **Descargar programadas (.ics)** exports scheduled posts in the visible calendar cells and current platform/search filters. Import the copy into your agenda; it does not synchronise or publish. Date-only entries are all-day, explicit offsets preserve their instant in UTC, and times without a zone stay floating local times. The read-only `posts_calendar_export` MCP tool returns a local URL for the complete file. See [the format and API](docs/calendar-export.md).
-- **Metrics**: add snapshots by hand (views, likes, comments, shares, saves, sales, revenue) or import a CSV. Charts per post, totals per platform and **best hours** (average views by weekday and hour of published posts; it says so when there are too few posts).
-- **Growth through Faustus**: `post_metrics_compare {post_id, from_ts, to_ts}` compares the latest whole snapshot at or before each endpoint. It returns both actual readings, changes and percentage changes for each metric, plus exact revenue differences when the currencies match. Missing values remain `null`, a zero baseline has no percentage, and decreases are retained. These are changes between saved observations, not sums of daily activity, live platform analytics or profit. Use ISO timestamps with UTC offsets; naive timestamps use this computer's timezone. Sparse readings are not filled from older rows.
-- **Compare growth in the editor**: open a saved post and click **Metrics** (**Métricas**) in the editor header to reach **Compare growth** (**Comparar crecimiento**). Choose the start and end dates in your browser's local timezone, or use **First to last** (**Primera a última**). The table shows the actual saved readings used, all six metrics and revenue, signed changes and percentages. Missing readings, zero baselines and different currencies are explained in place. It uses the same calculation as Faustus through `POST /api/posts/metrics/compare`; comparing never changes the stored readings.
-- **CSV import** per platform with a column mapping you can change. Presets recognise YouTube Studio, Instagram and TikTok exports by their column names. The presets are heuristic: they have not been checked against real exports, so review the mapping in the preview. Re-importing the same file adds no snapshots.
-- **Captions**: suggestions appear only when Hoard Link can reach a language model that is already loaded; nothing depends on it.
+**Ask Faustus.** The Faustus icon opens the shared copilot on the dashboard and the publication page, including inside dialogs. Chats, drafts, model calls and tools stay in Faustus; Mercator stores only its stable `data/copilot-space-id`. The panel receives the current view, real record identifiers and unsaved editor fields; a completed turn refreshes lists and metrics while keeping open drafts. See [docs/copilot.md](docs/copilot.md).
 
-Data stays in `data/mercator.sqlite3` (tables `posts`, `post_metrics`, `catalog_items`), opened with the family's `hoard_link.sqlkit.Database`: one shared connection, WAL, a 15 s busy timeout, versioned migrations (`schema_version`) and a checkpoint when the server stops.
+**Skills.** The app carries `catalogue-and-sales-metrics` and `measured-improvement` from the family's skill library for connecting agents, read with `skills_list` and `skill_read`, assigned on the skills page (`/api/agent/skills/page`) or in the hub's Skills tab.
 
-## Family
+## Project layout
 
-**Use as a base** (**Usar como base**) in a saved publication opens an editable new draft using only its visible platform, title, caption, hashtags, media reference and notes. The origin is shown; adapt the text or platform before saving. Opening/cancelling writes nothing; saving uses native post creation with a new identity, leaving the source unchanged. Dates, published URL, external IDs and metrics are not carried over, and no social-network publishing occurs. Copilot sees an unsaved object and retains the draft content across refresh.
+| Path | Contents |
+|---|---|
+| `mercator.py`, `mercator_family.py` | server and family integration |
+| `agent_tools.py`, `mcp_server.py` | tools and stdio bridge |
+| `crm.py`, `publishing.py`, `post_csv.py`, `calendar_export.py`, `cults_catalog.py`, `plausible_stats.py` | CRM, publication, CSV import, calendar export, catalogue, Plausible |
+| `hoard_link/` | shared family library, vendored unchanged (standard library only) |
+| `static/` | web interface |
+| `docs/` | calendar export and copilot references |
+| `tests/` | Python and JS tests |
+| `data/` | SQLite database, token, copilot space (not tracked) |
 
-Mercator follows the Hoard family contract (`faustus-plugin.json`, `x-family`):
+Data is opened with `hoard_link.sqlkit.Database`: one shared connection, WAL, 15 s busy timeout, versioned migrations.
 
-- Tools through `GET /api/agent/tools` and `POST /api/agent/call` (bearer token in `data/mcp-token`, created on first start) and the stdio bridge: `posts_list`, `post_get`, `post_upsert`, `post_schedule`, `post_publish`, `post_metrics_add`, `post_metrics_compare`, `posts_stats`, `post_draft_from_media {media_ref, title}`, `post_caption_suggest`, `sales_batch_get {batch}`, `catalog_from_vulcan {}` (asks Vulcan for `listings_export_catalog` and upserts the result into the Cults catalogue; needs Vulcan running) plus the two below.
-- Events: `mercator.post.scheduled`, `mercator.post.published`, `mercator.post.drafted`, `mercator.sales.imported {batch}` (after a sales import that added lines, so a hub rule can record the income).
-- Agenda: `GET /api/family/agenda` answers with the scheduled posts (kind `publish`); it needs the same bearer token.
-- `hoard_link/` is the shared library, vendored unchanged (version 0.8). It imports with the standard library only, so the dashboard still runs without installing anything. The token (`data/mcp-token`) is created once and kept across restarts. Assistant answers from the tools are capped at 20 000 bytes (`truncated` says what was left out); the web page gets everything. Errors come as `{ok: false, error, code}` with `unknown_tool` 404, `invalid` 400 or `internal` 500.
-
-## Ask Faustus
-
-The Faustus icon opens the shared copilot on the dashboard and publication page, including inside publication and CSV import dialogs. Chats, drafts, model calls and tools remain in Faustus. Mercator stores only its stable `data/copilot-space-id`; `MERCATOR_DATA_DIR` selects another data space. Configure the global Faustus service through HoardLink or `MERCATOR_FAUSTUS_URL`. Model reasoning uses the global Sparks service; local GPUs remain available for content generation.
-
-The panel receives the current view, real CRM/publication identifiers and unsaved editor fields. New or removed records have no active object. A completed turn refreshes lists, saved analytics and publication metrics while keeping the editor and its draft. Existing CRM and publication forms save only changed fields, so an agent's concurrent changes to other fields survive. Native `crm_patch {kind, id, fields}` performs that merge in the database transaction; existing revision-aware save tools remain available.
-
-See [the copilot API](docs/copilot.md) for the shared relay endpoints and context contract.
-
-`python mcp_server.py` is the stdio MCP bridge (the family's shared `CatalogBridge`; it needs `pip install -r requirements.txt`, i.e. the `mcp` package). It lists the tools from the running dashboard and forwards every call to it with the token in `data/mcp-token`; when nothing answers it starts `python -m mercator` itself (`MERCATOR_BRIDGE_AUTOSTART=0` disables that; `MERCATOR_URL`, `MERCATOR_PORT`, `MERCATOR_DATA_DIR`, `MERCATOR_TOKEN_FILE` say where the server is). The original two are read-only: `mercator_catalog` searches product listings and filters listings without tags or missing/invalid files; `mercator_sales` looks up imported sales by product with totals per currency. Hoard Hub can use the MCP entry in `faustus-plugin.json`. Set `MERCATOR_DATA_DIR` and `MERCATOR_PRODUCTS_DIR` in the process environment to point an isolated test or custom local store elsewhere.
-
-## Snapshot comparison references
-
-The comparison capability reuses the local metrics history without a new dependency. [YouTube's official metric definitions](https://developers.google.com/youtube/analytics/metrics) and [report date ranges](https://developers.google.com/youtube/analytics/reference/reports/query) informed the distinction between observations and period activity; Mercator does not call those APIs for this tool.
-
-## Verify
+## Tests
 
 ```sh
-python -m unittest discover -s tests   # or: python -m pytest tests (the bridge tests need the mcp package and are skipped without it)
+python -m unittest discover -s tests   # or: python -m pytest tests
 ```
 
-The server binds only to `127.0.0.1` and runs the family's request guard (`hoard_link.guard`): the `Host` must be loopback and name the server's port (other names go in `MERCATOR_ALLOWED_HOSTS`), a browser `Origin` must be local with the same port, cross-site fetches and form posts are refused.
-
-## Family expansion · 2026-10-04
-
-`plausible_query` reads [Plausible Stats API v2](https://plausible.io/docs/stats-api) and saves the exact query, response, origin and observation time; `plausible_history` lists saved snapshots. The Analytics tab uses the same handlers, keeps dimensions/currencies/null values and exports JSON. Configure `PLAUSIBLE_API_KEY` and optionally `PLAUSIBLE_URL` (HTTPS remote or HTTP loopback origin). Account/edition must provide API access. Queries support periods or date pairs, metrics, dimensions and up to 1000 rows; nested filters, ordering and explicit pagination are supported; each snapshot preserves its offset. No tracking script or fabricated website metrics is installed.
-
-## Skills for the agents that connect
-
-This app carries procedures from the skill library of the family's workspace for the agents that connect to it: `catalogue-and-sales-metrics`, `measured-improvement`. They are named in what an agent reads on connecting, read with `skills_list` and `skill_read`, searched and assigned with `skills_library` and `skills_assign`, and offered as prompts. The person chooses them on the skills page (`/api/agent/skills/page`) or in the hub's Skills tab; the `skills` block of `faustus-plugin.json` holds what the app asks for by default.
+The bridge tests need the `mcp` package and are skipped without it.
