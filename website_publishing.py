@@ -164,10 +164,22 @@ class Publisher:
         self.registry = self.root / "sites.json"
         self._lock = threading.RLock()
         self._processes: dict[str, subprocess.Popen] = {}
-        if self.registry.is_file():
-            self._sites = json.loads(self.registry.read_text(encoding="utf-8"))
-        else:
-            self._sites = {}
+        try:
+            payload = json.loads(self.registry.read_text(encoding="utf-8"))
+            fields = {"title", "port", "revision", "public", "server", "source", "active"}
+            self._loaded = payload if isinstance(payload, dict) and all(
+                isinstance(site, dict) and fields <= site.keys() for site in payload.values()
+            ) else None
+        except FileNotFoundError:
+            self._loaded = {}
+        except (OSError, ValueError):
+            self._loaded = None
+
+    @property
+    def _sites(self):
+        if self._loaded is None:
+            raise PublicationError("invalid_registry", "The website registry is unreadable. Its contents were preserved.")
+        return self._loaded
 
     def _site_dir(self, slug):
         return self.root / slug
@@ -181,7 +193,7 @@ class Publisher:
     def _save(self, slug, site):
         sites = {**self._sites, slug: site}
         write_json_atomic(self.registry, sites)
-        self._sites = sites
+        self._loaded = sites
 
     def _running(self, slug):
         process = self._processes.get(slug)
@@ -240,6 +252,8 @@ class Publisher:
 
     def restore(self):
         with self._lock:
+            if self._loaded is None:
+                return
             for slug, site in self._sites.items():
                 if site["active"] and not self._running(slug):
                     self._stop(slug)
@@ -334,8 +348,8 @@ class Publisher:
         if not isinstance(title, str) or not 0 < len(title.strip()) <= 120 or not isinstance(start_with_hub, bool):
             raise PublicationError("invalid_options", "Enter a title up to 120 characters and a valid startup option.")
         with self._lock:
-            revision, public = self._snapshot(slug, original, server)
             before = self._sites.get(slug)
+            revision, public = self._snapshot(slug, original, server)
             port = before["port"] if before else self._free_port()
             site = {"title": title.strip(), "port": port, "revision": revision, "public": public,
                     "server": server, "source": str(original), "active": True}

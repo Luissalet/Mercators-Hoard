@@ -27,6 +27,7 @@ const dictionary = {
     missing_index: "Incluye index.html en la raíz del paquete o en public/.",
     invalid_server: "Incluye el archivo Python indicado y public/index.html.",
     invalid_options: "Revisa el título y la opción de arranque.",
+    invalid_registry: "No se puede leer el registro de webs. Se ha conservado el archivo original.",
     start_failed: "La web no ha respondido en su dirección local. Comprueba que el puerto esté libre y que el servidor pueda arrancar.",
     stale_undo: "Hay un cambio posterior en esta web. Actualiza la lista para ver qué puedes deshacer.",
     unknown_site: "La web no está en el registro.",
@@ -58,6 +59,7 @@ const dictionary = {
     missing_index: "Include index.html at the package root or in public/.",
     invalid_server: "Include the specified Python entry file and public/index.html.",
     invalid_options: "Check the title and startup option.",
+    invalid_registry: "Could not read the website registry. The original file is preserved.",
     start_failed: "The website did not respond at its local address. Check the port is free and the server can start.",
     stale_undo: "A newer change was made to the website. Refresh the list to see which change can be undone.",
     unknown_site: "This website is not in the registry.",
@@ -144,9 +146,9 @@ async function refresh() {
     snapshot = current;
     renderList();
     $("list-message").classList.remove("website-error");
-  } catch {
+  } catch (error) {
     if (request !== listRequest) return;
-    $("list-message").textContent = words("readFailed");
+    $("list-message").textContent = words(error.message === "invalid_registry" ? "invalid_registry" : "readFailed");
     $("list-message").classList.add("website-error");
   } finally {
     if (request === listRequest) list.setAttribute("aria-busy", "false");
