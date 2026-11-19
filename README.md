@@ -1,12 +1,12 @@
 # Mercator's Hoard
 
-A local dashboard that follows WatchHoard and BookHoard usage, Cults product listings and sales, publications and their metrics, web analytics, and a small CRM of companies and opportunities.
+A local dashboard that follows WatchHoard and BookHoard usage, Cults product listings and sales, publications and their metrics, local website hosting, web analytics, and a small CRM of companies and opportunities.
 
 [Leer en español](README.es.md)
 
 ## What it is
 
-Mercator keeps the numbers of the projects in one place, on this computer only. History is stored in `data/mercator.sqlite3`; nothing is sent anywhere. The interface labels are in Spanish. Figures are always shown with their origin and date, and a source that cannot be read is marked pending instead of presenting an older value as current.
+Mercator keeps the numbers of the projects in one place, on this computer only. History is stored in `data/mercator.sqlite3`; nothing is sent anywhere. The dashboard is in Spanish; website management is in Spanish and English. Figures are always shown with their origin and date, and a source that cannot be read is marked pending instead of presenting an older value as current.
 
 ## What it does
 
@@ -33,6 +33,11 @@ Mercator keeps the numbers of the projects in one place, on this computer only. 
 - **Comparar crecimiento**: compares the latest whole snapshot at or before two dates (or first to last), with actual readings, signed changes and percentages. Missing values stay empty, zero baselines have no percentage, different currencies are explained. These are changes between saved observations, not live platform analytics or profit.
 - Caption suggestions appear only when a language model is already reachable; nothing depends on it.
 
+**Websites** (`/websites`)
+- Publishes a folder or ZIP at a fixed address on this PC, with an optional own Python server. Publication can start with the Hub.
+- Update, unpublish and undo the last change keep the same address. Each site's form submissions are read from Mercator.
+- [Package formats, forms and public destinations](docs/website-publishing.md).
+
 **Web analytics**
 - Queries the Plausible Stats API v2 and saves the exact query, response, origin and time. Supports relative periods or an explicit date range (**Personalizado**), metrics, dimensions, nested filters, ordering and pagination up to 1000 rows. Saved snapshots can be queried again with their full stored query, and exported as JSON. No tracking script is installed. Needs `PLAUSIBLE_API_KEY` (and optionally `PLAUSIBLE_URL`, an HTTPS remote or HTTP loopback origin).
 
@@ -52,13 +57,14 @@ Environment: `MERCATOR_DATA_DIR`, `MERCATOR_PRODUCTS_DIR`, `MERCATOR_PORT`, `MER
 
 ## Connection with Faustus and the Hub
 
-Declares a handoff from the URL of an already published item to a publication record and calendar entry.
+Declares two production handoffs: a website package to its published local address, and the URL of an already published item to a publication record and calendar entry.
 
 The plugin manifest is `faustus-plugin.json` (family contract, `x-family`). Tools are served at `GET /api/agent/tools` and `POST /api/agent/call` (bearer token in `data/mcp-token`, created on first start) and through the stdio bridge `python mcp_server.py`, which needs `pip install -r requirements.txt`. The bridge forwards every call to the running dashboard and starts `python -m mercator` itself when nothing answers (`MERCATOR_BRIDGE_AUTOSTART=0` disables that; `MERCATOR_URL`, `MERCATOR_PORT`, `MERCATOR_DATA_DIR`, `MERCATOR_TOKEN_FILE` say where the server is).
 
 Tools by group:
 - Catalogue and sales: `mercator_catalog`, `mercator_sales`, `sales_batch_get`, `catalog_from_vulcan`.
 - Publication: `posts_list`, `post_get`, `post_upsert`, `post_schedule`, `post_publish`, `post_draft_from_media`, `post_caption_suggest`, `post_metrics_add`, `post_metrics_compare`, `posts_stats`, `posts_calendar_export`.
+- Websites: `website_publish`, `website_unpublish`, `website_undo`, `website_status`, `website_submissions`.
 - Analytics: `plausible_query`, `plausible_history`.
 - CRM: `crm_list`, `crm_get`, `crm_company_save`, `crm_deal_save`, `crm_patch`, `crm_activity_add`, `crm_summary`, `crm_export`.
 
@@ -77,6 +83,7 @@ Events: `mercator.post.scheduled`, `mercator.post.published`, `mercator.post.dra
 | `mercator.py`, `mercator_family.py` | server and family integration |
 | `agent_tools.py`, `mcp_server.py` | tools and stdio bridge |
 | `crm.py`, `publishing.py`, `post_csv.py`, `calendar_export.py`, `cults_catalog.py`, `plausible_stats.py` | CRM, publication, CSV import, calendar export, catalogue, Plausible |
+| `website_publishing.py` | local website hosting and form inbox |
 | `hoard_link/` | shared family library, vendored unchanged (standard library only) |
 | `static/` | web interface |
 | `docs/` | calendar export and copilot references |

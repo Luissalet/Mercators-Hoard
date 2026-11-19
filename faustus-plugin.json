@@ -88,6 +88,7 @@
   "x-family": {
     "production": {
       "handoffs": [
+        {"accepts": "web-page", "produces": ["published-item-url"], "skill": "deployment-patterns", "check": {"en": "Open the published address, submit the form once and read the reference back with website_submissions.", "es": "Abre la dirección publicada, envía el formulario una vez y vuelve a leer la referencia con website_submissions."}},
         {"accepts": "published-item-url", "produces": ["publication-record"], "skill": "catalogue-and-sales-metrics", "check": {"en": "Read back the record and verify its source URL, platform and calendar entry.", "es": "Relee la ficha y comprueba su URL de origen, su plataforma y su entrada en el calendario."}}
       ]
     },
