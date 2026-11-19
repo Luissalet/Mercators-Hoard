@@ -21,7 +21,8 @@ INSTRUCTIONS = (
     "published only with post_publish (it takes the real URL). Revenue is shown per currency and is not profit. "
     "CRM: inspect crm_list / crm_get before editing; saves require expected_revision. Deal values and probabilities "
     "are owner estimates, won is not collected revenue. Link contacts with people_ref and documents with document_refs. "
-    "Record real interactions with crm_activity_add; never send outreach or add invented activity."
+    "Record real interactions with crm_activity_add; never send outreach or add invented activity. "
+    "Use website_publish for an actual local website deployment and website_submissions for its private form inbox."
 )
 
 STRING = {"type": "string"}
@@ -395,6 +396,32 @@ TOOLS.append({
     "inputSchema": _schema({"from": STRING, "to": STRING, "platform": PLATFORM, "q": STRING}),
     "annotations": _ann(True), "run": posts_calendar_export,
 })
+def _website(method, args):
+    import mercator
+    return getattr(mercator.website_publisher(mercator.DATA), method)(**args)
+
+
+WEBSITE_SLUG = {"type": "string", "description": "Stable lowercase ID, with numbers and hyphens allowed."}
+TOOLS.extend([
+    {"name": "website_publish", "description": "Publish a local folder or ZIP at a fixed URL; returns an undo token.\nUse the same slug to update the package without changing the URL.",
+     "inputSchema": _schema({
+         "slug": WEBSITE_SLUG, "source": {"type": "string", "description": "Absolute local folder or ZIP path."},
+         "title": STRING, "server": {"type": "string", "description": "Trusted relative Python entry file accepting --port and --db. Omit for static hosting."},
+         "start_with_hub": {"type": "boolean", "default": True, "description": "Enable Mercator in the local Hub keep-alive list."},
+     }, ["slug", "source"]), "annotations": _ann(False, True), "run": lambda a: _website("publish", a)},
+    {"name": "website_unpublish", "description": "Stop serving a website and keep its files, address and inbox for undo.\nPass the returned token to website_undo to resume it.",
+     "inputSchema": _schema({"slug": WEBSITE_SLUG}, ["slug"]),
+     "annotations": _ann(False, True), "run": lambda a: _website("unpublish", a)},
+    {"name": "website_undo", "description": "Reverse a website publish or unpublish using its current undo token.\nA token applies only until a later change to that website.",
+     "inputSchema": _schema({"slug": WEBSITE_SLUG, "undo_token": STRING}, ["slug", "undo_token"]),
+     "annotations": _ann(False), "run": lambda a: _website("undo", a)},
+    {"name": "website_status", "description": "Read website URLs, serving state, revision and Hub startup state.\nOmit the slug to list all websites and available destination types.",
+     "inputSchema": _schema({"slug": WEBSITE_SLUG}), "annotations": _ann(True), "run": lambda a: _website("status", a)},
+    {"name": "website_submissions", "description": "Read the private form inbox of one website.\nReturns references, timestamps and submitted fields, newest first.",
+     "inputSchema": _schema({"slug": WEBSITE_SLUG, "limit": INTEGER, "offset": INTEGER}, ["slug"]),
+     "annotations": _ann(True), "run": lambda a: _website("submissions", a)},
+])
+
 TOOLS_BY_NAME = {t["name"]: t for t in TOOLS}
 
 
