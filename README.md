@@ -52,6 +52,8 @@ Environment: `MERCATOR_DATA_DIR`, `MERCATOR_PRODUCTS_DIR`, `MERCATOR_PORT`, `MER
 
 ## Connection with Faustus and the Hub
 
+Declares a handoff from the URL of an already published item to a publication record and calendar entry.
+
 The plugin manifest is `faustus-plugin.json` (family contract, `x-family`). Tools are served at `GET /api/agent/tools` and `POST /api/agent/call` (bearer token in `data/mcp-token`, created on first start) and through the stdio bridge `python mcp_server.py`, which needs `pip install -r requirements.txt`. The bridge forwards every call to the running dashboard and starts `python -m mercator` itself when nothing answers (`MERCATOR_BRIDGE_AUTOSTART=0` disables that; `MERCATOR_URL`, `MERCATOR_PORT`, `MERCATOR_DATA_DIR`, `MERCATOR_TOKEN_FILE` say where the server is).
 
 Tools by group:

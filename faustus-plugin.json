@@ -86,6 +86,11 @@
     ]
   },
   "x-family": {
+    "production": {
+      "handoffs": [
+        {"accepts": "published-item-url", "produces": ["publication-record"], "skill": "catalogue-and-sales-metrics", "check": {"en": "Read back the record and verify its source URL, platform and calendar entry.", "es": "Relee la ficha y comprueba su URL de origen, su plataforma y su entrada en el calendario."}}
+      ]
+    },
     "agenda": true,
     "agent_contract": true,
     "events": true,
