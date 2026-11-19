@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="es" data-hoard-app="mercator">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Webs · Mercator's Hoard</title>
+  <link rel="icon" type="image/png" href="/app-icon.png">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/websites.css">
+  <script src="/websites.js" defer></script>
+</head>
+<body class="website-page">
+  <div class="shell">
+    <header class="masthead">
+      <a class="wordmark" href="/"><span class="mark" aria-hidden="true">M</span><span>Mercator<span class="apostrophe">’s</span> Hoard</span></a>
+      <nav data-label="nav"><a href="/" data-text="dashboard">Panel</a><a href="/publicacion" data-text="posts">Publicación</a><a href="/websites" aria-current="page" data-text="websites">Webs</a></nav>
+      <label class="website-language"><span data-text="language">Idioma</span>
+        <select id="language"><option value="es">Español</option><option value="en">English</option></select>
+      </label>
+    </header>
+
+    <main>
+      <h1 data-text="websites">Webs</h1>
+      <p class="site-intro" data-text="intro">Publica una carpeta o un ZIP en este PC y consulta los envíos de su formulario.</p>
+      <div class="website-workspace">
+        <section class="site-list" aria-labelledby="published-title">
+          <div class="site-heading">
+            <h2 id="published-title" data-text="published">Publicaciones</h2>
+            <button type="button" id="reload" data-text="refresh">Actualizar</button>
+          </div>
+          <p id="hub-state" class="website-muted"></p>
+          <ul id="sites" class="sites" aria-labelledby="published-title" aria-busy="true"></ul>
+          <p id="list-message" class="website-muted" data-text="loading">Cargando webs…</p>
+          <details class="website-destinations">
+            <summary data-text="destinations">Destinos públicos</summary>
+            <ul>
+              <li data-text="https">Dominio con proxy HTTPS. Aloja la web y el formulario desde un origen público de tu elección.</li>
+              <li data-text="staticHost">Alojamiento estático. Sube los archivos web y conecta el formulario a un servidor si lo necesita.</li>
+            </ul>
+          </details>
+        </section>
+
+        <section class="site-setup" aria-labelledby="setup-title">
+          <h2 id="setup-title" data-text="setup">Publicar una web</h2>
+          <form id="publish" aria-describedby="source-help">
+            <label><span data-text="source">Carpeta o ZIP</span><input name="source" required autocomplete="off" spellcheck="false"></label>
+            <small id="source-help" data-text="sourceHelp">Copia la ruta completa del archivo o carpeta.</small>
+            <div class="website-fields">
+              <label><span data-text="slug">Identificador</span><input name="slug" required maxlength="64" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="taller-greda" autocomplete="off" spellcheck="false"></label>
+              <label><span data-text="title">Título</span><input name="title" maxlength="120" autocomplete="off"></label>
+            </div>
+            <small data-text="slugHelp">Para actualizar una web, usa el mismo identificador.</small>
+            <details>
+              <summary data-text="runtime">Servidor del paquete</summary>
+              <label><span data-text="entry">Archivo Python</span><input name="server" placeholder="server.py" autocomplete="off" spellcheck="false"></label>
+              <small data-text="entryHelp">Indica la ruta relativa si el paquete incluye un servidor de confianza que acepta --port y --db. Deja el campo vacío para servir solo los archivos web.</small>
+            </details>
+            <label class="website-check"><input name="start_with_hub" type="checkbox" checked><span data-text="autostart">Arrancar Mercator con el Hub</span></label>
+            <button class="website-primary" type="submit" data-text="publish">Publicar en este PC</button>
+          </form>
+        </section>
+      </div>
+
+      <p id="action-message" role="status" aria-live="polite"></p>
+      <section id="inbox" class="site-inbox" aria-labelledby="inbox-title" hidden>
+        <div class="site-heading">
+          <h2 id="inbox-title" tabindex="-1"></h2>
+          <button type="button" id="reload-inbox" data-text="refresh">Actualizar</button>
+        </div>
+        <p id="inbox-message" role="status"></p>
+        <ul id="submissions" class="submissions"></ul>
+        <button type="button" id="more-submissions" data-text="more" hidden>Ver más</button>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

@@ -17,6 +17,7 @@ import urllib.error
 import urllib.request
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -31,6 +32,7 @@ import crm
 import mercator_family
 import post_csv
 import publishing
+import website_publishing
 from hoard_link import guard
 from hoard_link import money as hl_money
 from hoard_link.sqlkit import Database
@@ -498,9 +500,23 @@ STATIC_FILES = {
     "/app.js": ("app.js", "text/javascript; charset=utf-8"), "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/publicacion": ("publicacion.html", "text/html; charset=utf-8"), "/publicacion.html": ("publicacion.html", "text/html; charset=utf-8"),
     "/publicacion.js": ("publicacion.js", "text/javascript; charset=utf-8"), "/publicacion.css": ("publicacion.css", "text/css; charset=utf-8"),
+    "/websites": ("websites.html", "text/html; charset=utf-8"),
+    "/websites.js": ("websites.js", "text/javascript; charset=utf-8"),
+    "/websites.css": ("websites.css", "text/css; charset=utf-8"),
     "/publication-draft.js": ("publication-draft.js", "text/javascript; charset=utf-8"),
 }
 MAX_BODY = 5_000_000
+
+
+@lru_cache(maxsize=None)
+def website_publisher(data: Path) -> website_publishing.Publisher:
+    return website_publishing.Publisher(data)
+
+
+def restore_websites(stop: threading.Event, publisher: website_publishing.Publisher) -> None:
+    while not stop.is_set():
+        publisher.restore()
+        stop.wait(30)
 
 
 def base_url() -> str:
@@ -679,6 +695,11 @@ class Handler(BaseHTTPRequestHandler):
                     with reading() as conn:
                         post = publishing.get_post(conn, post_id)
                     self._json(200, {"post": post})
+            elif path == "/api/websites":
+                self._json(200, website_publisher(DATA).status(query.get("slug")))
+            elif path == "/api/websites/submissions":
+                result = website_publisher(DATA).submissions(query.get("slug", ""), int(query.get("limit", 25)), int(query.get("offset", 0)))
+                self._json(200, result)
             elif path == "/api/agent/tools":
                 import agent_tools
                 self._json(200, {"instructions": agent_tools.INSTRUCTIONS, "tools": agent_tools.tool_catalog()})
@@ -696,6 +717,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._reply(200, (ROOT / "static" / name).read_bytes(), content_type)
             else:
                 self._json(404, {"error": "No encontrado"})
+        except website_publishing.PublicationError as exc:
+            self._json(400, {"ok": False, "error": str(exc), "code": exc.code})
         except (ValueError, TypeError) as exc:
             self._json(400, {"error": str(exc)})
         except (sqlite3.Error, OSError) as exc:
@@ -718,6 +741,9 @@ class Handler(BaseHTTPRequestHandler):
         except KeyError as exc:
             error = str(exc.args[0]) if exc.args else "Unknown tool"
             self._json(404, {"ok": False, "error": error, "code": "unknown_tool"})
+        except website_publishing.PublicationError as exc:
+            error = str(exc)
+            self._json(400, {"ok": False, "error": error, "code": exc.code})
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             error = str(exc)
             self._json(400, {"ok": False, "error": error, "code": "invalid"})
@@ -738,6 +764,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/agent/call":
             self._post_agent_call()
             return
+        website_routes = {"/api/websites/publish": "website_publish",
+                          "/api/websites/unpublish": "website_unpublish",
+                          "/api/websites/undo": "website_undo"}
+        if path in website_routes:
+            return self._post_website(website_routes[path])
         routes = {"/api/refresh", "/api/sales/import", "/api/posts", "/api/posts/delete", "/api/posts/schedule", "/api/posts/publish",
                   "/api/posts/metrics", "/api/posts/metrics/compare", "/api/posts/from-media", "/api/posts/import/preview", "/api/posts/import", "/api/posts/caption", "/api/catalog/from-vulcan", "/api/analytics/query",
                   "/api/crm/company", "/api/crm/deal", "/api/crm/activity", "/api/crm/patch"}
@@ -789,6 +820,17 @@ class Handler(BaseHTTPRequestHandler):
         except (sqlite3.Error, OSError) as exc:
             self._json(500, {"error": "No se pudieron guardar los datos locales. Reintenta.", "code": type(exc).__name__})
 
+    def _post_website(self, name: str) -> None:
+        import agent_tools
+        try:
+            self._json(200, agent_tools.call_tool(name, self._body(), cap=False))
+        except website_publishing.PublicationError as exc:
+            self._json(400, {"ok": False, "error": str(exc), "code": exc.code})
+        except (ValueError, TypeError) as exc:
+            self._json(400, {"ok": False, "error": str(exc), "code": "invalid"})
+        except (sqlite3.Error, OSError):
+            self._json(500, {"ok": False, "code": "internal"})
+
     def log_message(self, fmt: str, *args: object) -> None:
         # Do not write request bodies, headers or credentials to logs.
         print(f"{self.address_string()} {fmt % args}")
@@ -800,6 +842,9 @@ def main() -> None:
     mercator_family.configure(DATA)
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     stop = threading.Event()
+    publisher = website_publisher(DATA)
+    websites = threading.Thread(target=restore_websites, args=(stop, publisher), daemon=True)
+    websites.start()
     threading.Thread(target=background_refresh, args=(stop,), daemon=True).start()
     print(f"Mercator's Hoard: http://127.0.0.1:{port}")
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))      # a stop request closes the store like Ctrl+C does
@@ -810,6 +855,8 @@ def main() -> None:
     finally:
         stop.set()
         server.server_close()
+        websites.join()
+        publisher.close()
         close_databases()
 
 
