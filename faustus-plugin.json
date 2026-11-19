@@ -86,9 +86,12 @@
     ]
   },
   "x-family": {
+    "isolated_instance": {"data_env": "MERCATOR_DATA_DIR", "port_env": "MERCATOR_PORT"},
     "production": {
       "handoffs": [
-        {"accepts": "web-page", "produces": ["published-item-url"], "skill": "deployment-patterns", "check": {"en": "Open the published address, submit the form once and read the reference back with website_submissions.", "es": "Abre la dirección publicada, envía el formulario una vez y vuelve a leer la referencia con website_submissions."}},
+        {"accepts": "web-page", "produces": ["published-item-url"], "skill": "deployment-patterns", "check": {"en": "Publish the registered revision with hub_website_publish_piece and open the returned address.", "es": "Publica la revisión registrada con hub_website_publish_piece y abre la dirección devuelta."}},
+        {"accepts": "web-package", "produces": ["published-item-url"], "skill": "deployment-patterns", "check": {"en": "Publish the registered ZIP with hub_website_publish_piece and compare its source fingerprint.", "es": "Publica el ZIP registrado con hub_website_publish_piece y coteja su huella de origen."}},
+        {"accepts": "published-item-url", "produces": ["web-form-check"], "skill": "deployment-patterns", "check": {"en": "Use website_form_check to compare the response reference with the marked test submission in the inbox.", "es": "Usa website_form_check para cotejar la referencia de la respuesta con el envío de prueba marcado en el buzón."}},
         {"accepts": "published-item-url", "produces": ["publication-record"], "skill": "catalogue-and-sales-metrics", "check": {"en": "Read back the record and verify its source URL, platform and calendar entry.", "es": "Relee la ficha y comprueba su URL de origen, su plataforma y su entrada en el calendario."}}
       ]
     },

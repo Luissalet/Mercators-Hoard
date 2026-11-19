@@ -22,7 +22,7 @@ INSTRUCTIONS = (
     "CRM: inspect crm_list / crm_get before editing; saves require expected_revision. Deal values and probabilities "
     "are owner estimates, won is not collected revenue. Link contacts with people_ref and documents with document_refs. "
     "Record real interactions with crm_activity_add; never send outreach or add invented activity. "
-    "Use website_publish for an actual local website deployment and website_submissions for its private form inbox."
+    "Use website_publish to deploy a package and website_form_check to verify its form and private inbox."
 )
 
 STRING = {"type": "string"}
@@ -407,6 +407,8 @@ TOOLS.extend([
      "inputSchema": _schema({
          "slug": WEBSITE_SLUG, "source": {"type": "string", "description": "Absolute local folder or ZIP path."},
          "title": STRING, "server": {"type": "string", "description": "Trusted relative Python entry file accepting --port and --db. Omit for static hosting."},
+         "source_sha256": {**STRING, "description": "Expected SHA-256 of the ZIP or fingerprint of the folder package."},
+         "provenance": {"type": "object", "description": "Pinned order and piece identities from the Hub handoff."},
          "start_with_hub": {"type": "boolean", "default": True, "description": "Enable Mercator in the local Hub keep-alive list."},
      }, ["slug", "source"]), "annotations": _ann(False, True), "run": lambda a: _website("publish", a)},
     {"name": "website_unpublish", "description": "Stop serving a website and keep its files, address and inbox for undo.\nPass the returned token to website_undo to resume it.",
@@ -417,9 +419,20 @@ TOOLS.extend([
      "annotations": _ann(False), "run": lambda a: _website("undo", a)},
     {"name": "website_status", "description": "Read website URLs, serving state, revision and Hub startup state.\nOmit the slug to list all websites and available destination types.",
      "inputSchema": _schema({"slug": WEBSITE_SLUG}), "annotations": _ann(True), "run": lambda a: _website("status", a)},
-    {"name": "website_submissions", "description": "Read the private form inbox of one website.\nReturns references, timestamps and submitted fields, newest first.",
+    {"name": "website_submissions", "description": "Read private form submissions and their test flag. Lee los envíos del formulario.\n"
+                                                "Returns references, timestamps and fields, newest first.",
      "inputSchema": _schema({"slug": WEBSITE_SLUG, "limit": INTEGER, "offset": INTEGER}, ["slug"]),
      "annotations": _ann(True), "run": lambda a: _website("submissions", a)},
+    {"name": "website_form_check",
+     "description": "Test a live form and confirm its inbox entry. Prueba el formulario y comprueba el buzón.\n"
+                    "Posts synthetic data declared in website.json and returns the verdict and an undo action.",
+     "inputSchema": _schema({"url": {**STRING, "description": "URL of a live managed website."}}, ["url"]),
+     "annotations": _ann(False, False), "run": lambda a: _website("form_check", a)},
+    {"name": "website_form_check_undo",
+     "description": "Remove the marked test submission. Retira el envío de prueba.\n"
+                    "Use the undo token from website_form_check.",
+     "inputSchema": _schema({"slug": WEBSITE_SLUG, "undo_token": STRING}, ["slug", "undo_token"]),
+     "annotations": _ann(False, True), "run": lambda a: _website("form_check_undo", a)},
 ])
 
 TOOLS_BY_NAME = {t["name"]: t for t in TOOLS}
