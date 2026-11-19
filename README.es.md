@@ -1,12 +1,12 @@
 # Mercator's Hoard
 
-Panel local que sigue el uso de WatchHoard y BookHoard, las fichas y ventas de Cults, las publicaciones y sus métricas, la analítica web y un pequeño CRM de empresas y oportunidades.
+Panel local que sigue el uso de WatchHoard y BookHoard, las fichas y ventas de Cults, las publicaciones y sus métricas, el alojamiento local de webs, la analítica web y un pequeño CRM de empresas y oportunidades.
 
 [Read in English](README.md)
 
 ## Qué es
 
-Mercator reúne en un solo sitio las cifras de los proyectos, solo en este ordenador. El historial se guarda en `data/mercator.sqlite3`; nada sale a ningún sitio. Las etiquetas de la interfaz están en español. Las cifras se muestran siempre con su origen y su fecha, y una fuente que no se puede leer se marca como pendiente en lugar de presentar un valor antiguo como actual.
+Mercator reúne en un solo sitio las cifras de los proyectos, solo en este ordenador. El historial se guarda en `data/mercator.sqlite3`; nada sale a ningún sitio. El panel está en español. La gestión de webs está en español e inglés. Las cifras se muestran siempre con su origen y su fecha, y una fuente que no se puede leer se marca como pendiente en lugar de presentar un valor antiguo como actual.
 
 ## Qué hace
 
@@ -33,6 +33,11 @@ Mercator reúne en un solo sitio las cifras de los proyectos, solo en este orden
 - **Comparar crecimiento**: compara la última captura completa en o antes de dos fechas (o de la primera a la última), con lecturas reales, cambios con signo y porcentajes. Los valores ausentes quedan vacíos, una base cero no tiene porcentaje y las monedas distintas se explican. Son cambios entre observaciones guardadas, no analítica en vivo de la plataforma ni beneficio.
 - Las sugerencias de texto aparecen solo si ya hay un modelo de lenguaje accesible; nada depende de ello.
 
+**Webs** (/websites)
+- Publica una carpeta o un ZIP en una dirección fija de este PC, con servidor propio opcional. La publicación puede arrancar con el Hub.
+- Actualiza, despublica y deshaz el último cambio con la misma dirección. Consulta los envíos de cada formulario desde Mercator.
+- [Formatos de paquete, formulario y destinos públicos](docs/website-publishing.md).
+
 **Analítica web**
 - Consulta la API Stats v2 de Plausible y guarda la consulta exacta, la respuesta, el origen y la hora. Admite periodos relativos o un intervalo explícito (**Personalizado**), métricas, dimensiones, filtros anidados, orden y paginación hasta 1000 filas. Las capturas guardadas se pueden volver a consultar con su consulta completa y exportar a JSON. No se instala ningún script de seguimiento. Requiere `PLAUSIBLE_API_KEY` (y opcionalmente `PLAUSIBLE_URL`, un origen HTTPS remoto o HTTP de bucle local).
 
@@ -57,6 +62,7 @@ El manifiesto del plugin es `faustus-plugin.json` (contrato de la familia, `x-fa
 Herramientas por grupos:
 - Catálogo y ventas: `mercator_catalog`, `mercator_sales`, `sales_batch_get`, `catalog_from_vulcan`.
 - Publicación: `posts_list`, `post_get`, `post_upsert`, `post_schedule`, `post_publish`, `post_draft_from_media`, `post_caption_suggest`, `post_metrics_add`, `post_metrics_compare`, `posts_stats`, `posts_calendar_export`.
+- Webs: `website_publish`, `website_unpublish`, `website_undo`, `website_status`, `website_submissions`.
 - Analítica: `plausible_query`, `plausible_history`.
 - CRM: `crm_list`, `crm_get`, `crm_company_save`, `crm_deal_save`, `crm_patch`, `crm_activity_add`, `crm_summary`, `crm_export`.
 
@@ -76,6 +82,7 @@ Eventos: `mercator.post.scheduled`, `mercator.post.published`, `mercator.post.dr
 | `agent_tools.py`, `mcp_server.py` | herramientas y puente stdio |
 | `crm.py`, `publishing.py`, `post_csv.py`, `calendar_export.py`, `cults_catalog.py`, `plausible_stats.py` | CRM, publicación, importación CSV, exportación de calendario, catálogo, Plausible |
 | `hoard_link/` | biblioteca compartida de la familia, incluida sin cambios (solo biblioteca estándar) |
+| `website_publishing.py` | alojamiento local y buzón de formularios |
 | `static/` | interfaz web |
 | `docs/` | referencias de exportación de calendario y copiloto |
 | `tests/` | pruebas de Python y JS |
