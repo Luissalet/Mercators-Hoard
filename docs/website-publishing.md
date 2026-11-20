@@ -6,6 +6,8 @@ Open **Websites** from Mercator and enter a full path to a local folder or ZIP, 
 
 The package needs `index.html` at its root or under `public/`. A ZIP may wrap the package in a single folder. For deployments with a bundled server, put the publishable files under `public/` and place `website.json` at the package root. A manual publication can also specify the entry file without a manifest.
 
+For a static booking export, keep `public/index.html` and the website assets together. Place the `website.json` form contract at the package root so `website_form_check` can verify a submission to the site's inbox. The `deployment-patterns` skill describes how to verify a publication and exercise its rollback.
+
 A static site can POST a JSON object of text fields, or an HTML form encoded as application/x-www-form-urlencoded, to /api/forms on its own origin. The response contains a reference. A bundled Python server can keep its original form endpoint and write to the SQLite path Mercator supplied. For that route the inbox reads the commissions table with reference, created_at, name, email, category and details columns, or the Mercator submissions schema with reference, created_at and fields (JSON object). Use UTC for created_at. **Form submissions** lists the fields and reference from the same submission. Keep credentials and personal data outside the source package.
 
 Agent tools use the existing Mercator MCP and Hub transport:
@@ -27,6 +29,8 @@ For a public deployment, choose an HTTPS reverse proxy to the website's own port
 Abre **Webs** en Mercator y escribe la ruta completa de una carpeta o un ZIP local y un identificador estable. Usa el mismo identificador para actualizar el paquete. La dirección se conserva al actualizar, despublicar, deshacer y reiniciar Mercator. **Arrancar Mercator con el Hub** añade Mercator a la lista de arranque del Hub. Es un ajuste de la app y se gestiona desde el Hub. Al arrancar, Mercator recupera las webs activas y conserva el buzón de formularios de cada web despublicada.
 
 Incluye `index.html` en la raíz o en `public/`. El ZIP puede contener una única carpeta con el paquete. Si el paquete incluye un servidor, guarda en `public/` los archivos que se van a servir y declara el servidor en `website.json`, en la raíz del paquete. Para una publicación manual también puedes indicar la ruta relativa del archivo Python.
+
+Para publicar una reserva como sitio estático, conserva `public/index.html` con los recursos de la web. Guarda el contrato del formulario en `website.json` en la raíz del paquete. La skill `deployment-patterns` explica cómo comprobar una publicación y deshacerla.
 
 Una web estática puede enviar un objeto JSON con campos de texto o un formulario HTML application/x-www-form-urlencoded a /api/forms de su propio origen. La respuesta contiene una referencia. Si el paquete trae servidor, puede usar su propia ruta de formulario y escribir en la base SQLite que le pasa Mercator. El buzón lee la tabla commissions con las columnas reference, created_at, name, email, category y details, o la tabla submissions con reference, created_at y fields (objeto JSON). Usa UTC para created_at. **Formularios** muestra los campos y la referencia del mismo envío. Guarda las credenciales y los datos personales fuera del paquete.
 

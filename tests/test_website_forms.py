@@ -2,6 +2,7 @@ import hashlib
 import json
 import urllib.request
 import zipfile
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -82,6 +83,18 @@ def test_static_site_without_form_contract_has_no_form_verdict(publisher, tmp_pa
     with pytest.raises(PublicationError) as missing:
         publisher.form_check(site["url"])
     assert missing.value.code == "missing_form_contract"
+
+
+def test_static_public_directory_keeps_booking_contract_at_package_root(publisher, tmp_path):
+    manifest = json.loads((Path(__file__).resolve().parents[1] / "faustus-plugin.json").read_text(encoding="utf-8"))
+    assert "deployment-patterns" in manifest["skills"]["slugs"]
+    package = tmp_path / "booking.zip"
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr("public/index.html", '<form action="/api/forms" method="post"></form>')
+        archive.writestr("website.json", json.dumps({"version": 1, "form": STATIC_FORM}))
+        archive.writestr("server.py", "raise RuntimeError('Static publications do not execute source')")
+    site = publisher.publish("booking", str(package))["site"]
+    assert publisher.form_check(site["url"])["verdict"] == "pass"
 
 
 CONTRACT = {
