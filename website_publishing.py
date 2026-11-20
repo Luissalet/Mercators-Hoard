@@ -28,6 +28,7 @@ from uuid import uuid4
 
 from hoard_link import _hubclient, guard
 from hoard_link.atomic import write_json_atomic
+from website_forms import PublicationError, check_form, inbox_item, inbox_sources, read_contract, undo_check
 
 HOST = "127.0.0.1"
 MAX_FILES = 10_000
@@ -41,12 +42,6 @@ INBOX = """
     )
 """
 DESTINATIONS = ("local_hub", "public_https_proxy", "public_static_host")
-
-
-class PublicationError(ValueError):
-    def __init__(self, code: str, message: str):
-        super().__init__(message)
-        self.code = code
 
 
 def _linked(path: Path) -> bool:
@@ -69,7 +64,13 @@ def _package_path(raw: str) -> Path:
     return Path(*parts)
 
 
-def _write_package(source: Path, target: Path) -> str:
+def _server_entry(value: str) -> str:
+    if not isinstance(value, str) or (value and PurePosixPath(value).suffix != ".py"):
+        raise PublicationError("invalid_server", "Enter the relative path to a Python entry file.")
+    return _package_path(value).as_posix() if value else ""
+
+
+def _write_package(source: Path, target: Path, expected_sha256=None) -> str:
     digest = hashlib.sha256()
     total = count = 0
     names: set[str] = set()
@@ -107,7 +108,7 @@ def _write_package(source: Path, target: Path) -> str:
                         raise PublicationError("invalid_package", "The package contains a special file.")
                     copy(member.relative_to(source).as_posix(), info.st_size, partial(member.open, "rb"))
         else:
-            with zipfile.ZipFile(source) as archive:
+            with source.open("rb") as raw, zipfile.ZipFile(raw) as archive:
                 for member in archive.infolist():
                     _package_path(member.filename.rstrip("/"))
                     mode = stat.S_IFMT(member.external_attr >> 16)
@@ -115,6 +116,10 @@ def _write_package(source: Path, target: Path) -> str:
                         raise PublicationError("invalid_package", "ZIP links, special files and encrypted entries are unsupported.")
                     if not member.is_dir():
                         copy(member.filename, member.file_size, partial(archive.open, member))
+                if expected_sha256:
+                    raw.seek(0)
+                    if hashlib.file_digest(raw, "sha256").hexdigest() != expected_sha256:
+                        raise PublicationError("source_changed", "The ZIP differs from the requested revision.")
     except (OSError, zipfile.BadZipFile, NotImplementedError) as exc:
         raise PublicationError("invalid_package", "The website package could not be copied.") from exc
 
@@ -124,7 +129,10 @@ def _write_package(source: Path, target: Path) -> str:
         digest.update(name)
         with member.open("rb") as handle:
             digest.update(hashlib.file_digest(handle, "sha256").digest())
-    return digest.hexdigest()
+    revision = digest.hexdigest()
+    if expected_sha256 and source.is_dir() and revision != expected_sha256:
+        raise PublicationError("source_changed", "The folder differs from the requested revision.")
+    return revision
 
 
 def _hub_startup(enable=False) -> dict:
@@ -231,6 +239,9 @@ class Publisher:
                 python = python.with_name("python.exe")
             runtime = [str(python), "-u", str(Path(__file__).resolve()), str(port), str(self._db(slug)),
                        site["public"], site["server"]]
+            server_contract = (site.get("contract") or {}).get("server", {})
+            if server_contract.get("origin") == "argument":
+                runtime.append(f"http://{HOST}:{port}")
             # The handed-off server gets its own environment, without service or account credentials.
             keys = {"SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATH", "TEMP", "TMP", "LANG"}
             env = {key: value for key, value in os.environ.items() if key.upper() in keys}
@@ -241,7 +252,7 @@ class Publisher:
         while process.poll() is None and time.monotonic() < deadline:
             with closing(http.client.HTTPConnection(HOST, port, timeout=0.3)) as connection:
                 try:
-                    connection.request("GET", "/")
+                    connection.request("GET", server_contract.get("readiness", "/"))
                     if connection.getresponse().status == 200 and process.poll() is None:
                         return
                 except (OSError, http.client.HTTPException):
@@ -292,13 +303,13 @@ class Publisher:
                 return port
         raise PublicationError("start_failed", "No free local port could be assigned to this website.")
 
-    def _snapshot(self, slug, source, server):
+    def _snapshot(self, slug, source, server, source_sha256):
         versions = self._site_dir(slug) / "versions"
         versions.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="import-", dir=versions) as work:
             staging = Path(work) / "package"
             staging.mkdir()
-            revision = _write_package(source, staging)
+            revision = _write_package(source, staging, source_sha256)
             package = staging
             children = list(staging.iterdir())
             if len(children) == 1 and children[0].is_dir() and children[0].name != "public":
@@ -306,12 +317,18 @@ class Publisher:
             public = "public" if (package / "public" / "index.html").is_file() else "."
             if not (package / public / "index.html").is_file():
                 raise PublicationError("missing_index", "The package needs index.html at its root or in public/.")
+            contract = read_contract(package)
+            declared_entry = _server_entry((contract or {}).get("server", {}).get("entry", ""))
+            if declared_entry:
+                if server and server != declared_entry:
+                    raise PublicationError("invalid_contract", "The entry argument differs from website.json.")
+                server = declared_entry
             if server and (not (package / server).is_file() or public == "."):
                 raise PublicationError("invalid_server", "A Python server needs its entry file and public/index.html.")
             version = versions / revision
             if not version.exists():
                 package.rename(version)
-        return revision, public
+        return revision, public, server, contract
 
     @staticmethod
     def _validate_slug(slug):
@@ -324,9 +341,10 @@ class Publisher:
         return {"slug": slug, "title": site["title"], "revision": site["revision"],
                 "url": f"http://{HOST}:{site['port']}/", "active": site["active"],
                 "state": "live" if running else "unavailable" if site["active"] else "unpublished",
-                "server": site["server"], "source": site["source"], "undo_token": site.get("undo_token")}
+                "server": site["server"], "source": site["source"], "undo_token": site.get("undo_token"),
+                **({"provenance": site["provenance"]} if site.get("provenance") else {})}
 
-    def publish(self, slug, source, title=None, server="", start_with_hub=True):
+    def publish(self, slug, source, title=None, server="", start_with_hub=True, source_sha256=None, provenance=None):
         self._validate_slug(slug)
         if not isinstance(source, str) or not Path(source).is_absolute():
             raise PublicationError("invalid_source", "Enter an absolute local path to a folder or ZIP.")
@@ -337,35 +355,37 @@ class Publisher:
         if (original == self.root or original in self.root.parents or self.root in original.parents
                 or not (original.is_dir() or (original.is_file() and original.suffix.lower() == ".zip"))):
             raise PublicationError("invalid_source", "Choose a folder or ZIP outside the publication store.")
-        if not isinstance(server, str):
-            raise PublicationError("invalid_server", "Enter the relative path to a Python entry file.")
-        if server:
-            if PurePosixPath(server).suffix != ".py":
-                raise PublicationError("invalid_server", "Enter the relative path to a Python entry file.")
-            server = _package_path(server).as_posix()
+        server = _server_entry(server)
+        if source_sha256 is not None and (not isinstance(source_sha256, str)
+                                         or not re.fullmatch(r"[0-9a-f]{64}", source_sha256)):
+            raise PublicationError("invalid_source", "Use the SHA-256 of the requested source revision.")
+        if provenance is not None and (not isinstance(provenance, dict) or not source_sha256):
+            raise PublicationError("invalid_source", "Order provenance requires a verified source fingerprint.")
         if title is None:
             title = slug
         if not isinstance(title, str) or not 0 < len(title.strip()) <= 120 or not isinstance(start_with_hub, bool):
             raise PublicationError("invalid_options", "Enter a title up to 120 characters and a valid startup option.")
         with self._lock:
             before = self._sites.get(slug)
-            revision, public = self._snapshot(slug, original, server)
+            revision, public, server, contract = self._snapshot(slug, original, server, source_sha256)
             port = before["port"] if before else self._free_port()
             site = {"title": title.strip(), "port": port, "revision": revision, "public": public,
-                    "server": server, "source": str(original), "active": True}
-            stable = ("title", "port", "revision", "public", "server", "source", "active")
-            if before and all(before[key] == site[key] for key in stable):
+                    "server": server, "source": str(original), "active": True,
+                    "contract": contract, "provenance": provenance}
+            stable = site.keys()
+            if before and all(before.get(key) == site[key] for key in stable):
                 if not self._running(slug):
                     self._stop(slug)
                     self._start(slug, before)
                 current = before
             else:
                 current = {**site, "undo_token": uuid4().hex, "previous": (
-                    {key: before[key] for key in stable} if before else {**site, "active": False}
+                    {key: before.get(key) for key in stable} if before else {**site, "active": False}
                 )}
                 self._change(slug, current, before)
             result = {"ok": True, "site": self._view(slug, current, True), "undo_token": current.get("undo_token")}
         result["hub_startup"] = _hub_startup(enable=start_with_hub)
+        result["undo"] = {"tool": "website_undo", "arguments": {"slug": slug, "undo_token": result["undo_token"]}}
         return result
 
     def unpublish(self, slug):
@@ -413,21 +433,38 @@ class Publisher:
         if path.is_file():
             with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as db:
                 db.row_factory = sqlite3.Row
-                tables = {r[0] for r in db.execute("SELECT name FROM sqlite_schema WHERE type = 'table'")}
-                sources = []
-                if "submissions" in tables:
-                    sources.append("SELECT reference, created_at, fields FROM submissions")
-                if "commissions" in tables:
-                    fields = {r[1] for r in db.execute("PRAGMA table_info(commissions)")}
-                    if {"reference", "created_at", "name", "email", "category", "details"} <= fields:
-                        sources.append("SELECT reference, created_at, json_object('name', name, 'email', email, "
-                                       "'category', category, 'details', details) AS fields FROM commissions")
+                sources = inbox_sources(db)
                 if sources:
-                    sql = " UNION ALL ".join(sources) + " ORDER BY created_at DESC, reference DESC LIMIT ? OFFSET ?"
-                    items = [{"reference": row["reference"], "created_at": row["created_at"],
-                              "fields": json.loads(row["fields"])} for row in db.execute(sql, (limit + 1, offset))]
+                    sql = " UNION ALL ".join(sources.values()) + " ORDER BY created_at DESC, reference DESC LIMIT ? OFFSET ?"
+                    items = [inbox_item(row) for row in db.execute(sql, (limit + 1, offset))]
         return {"ok": True, "slug": slug, "submissions": items[:limit],
                 "next_offset": offset + limit if len(items) > limit else None}
+
+    def form_check(self, url):
+        try:
+            if not isinstance(url, str) or url != url.strip():
+                raise ValueError("invalid URL")
+            target = urlsplit(url)
+            port = target.port
+            if target.scheme != "http" or target.netloc != f"{HOST}:{port}":
+                raise ValueError("invalid origin")
+        except ValueError as exc:
+            raise PublicationError("invalid_url", "Use the URL of a live website managed by Mercator.") from exc
+        with self._lock:
+            found = next(((slug, site) for slug, site in self._sites.items() if site["port"] == port), None)
+            if found is None or not found[1]["active"] or not self._running(found[0]):
+                raise PublicationError("unknown_site", "The URL must belong to a live website managed by Mercator.")
+            slug, site = found
+            form = (site.get("contract") or {}).get("form")
+            if not form:
+                raise PublicationError("missing_form_contract", "Declare the test form in website.json.")
+            return check_form(self._db(slug), slug, url, form)
+
+    def form_check_undo(self, slug, undo_token):
+        self._validate_slug(slug)
+        with self._lock:
+            self._get(slug)
+            return undo_check(self._db(slug), undo_token)
 
 
 class StaticWebsite(SimpleHTTPRequestHandler):
@@ -504,7 +541,7 @@ class StaticWebsite(SimpleHTTPRequestHandler):
 
 
 def _website_worker():
-    port, database, public, server = sys.argv[1:]
+    port, database, public, server, *origin = sys.argv[1:]
     # Closing this pipe also stops the site if the owning Mercator is killed.
     def watch_owner():
         sys.stdin.buffer.read()
@@ -515,6 +552,8 @@ def _website_worker():
         path = Path(server).resolve()
         sys.path.insert(0, str(path.parent))
         sys.argv = [str(path), "--port", port, "--db", database]
+        if origin:
+            sys.argv.extend(["--origin", origin[0]])
         runpy.run_path(str(path), run_name="__main__")
     else:
         handler = partial(StaticWebsite, directory=public, database=database)

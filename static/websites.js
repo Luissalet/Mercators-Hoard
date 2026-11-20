@@ -10,14 +10,14 @@ const dictionary = {
     setup: "Publicar una web", source: "Carpeta o ZIP", sourceHelp: "Copia la ruta completa del archivo o carpeta.",
     slug: "Identificador", title: "Título", slugHelp: "Para actualizar una web, usa el mismo identificador.",
     runtime: "Servidor del paquete", entry: "Archivo Python",
-    entryHelp: "Indica la ruta relativa si el paquete incluye un servidor de confianza que acepta --port y --db. Deja el campo vacío para que Mercator sirva los archivos.",
+    entryHelp: "Si el servidor viene declarado en website.json, Mercator lo detecta. Si no, puedes indicar la ruta relativa del archivo Python de confianza.",
     autostart: "Arrancar Mercator con el Hub", publish: "Publicar en este PC",
     live: "Publicada", unpublished: "Despublicada", unavailable: "No disponible",
     enabled: "Mercator arranca con el Hub.", disabled: "Mercator arranca bajo demanda.",
     paused: "El arranque de Mercator con el Hub está en pausa.",
     hubUnavailable: "El Hub no ha confirmado el arranque de Mercator.",
     empty: "Las webs que publiques aparecerán aquí.", stop: "Despublicar", undo: "Deshacer",
-    inbox: "Formularios", more: "Ver más", noSubmissions: "Todavía no hay envíos.",
+    inbox: "Formularios", more: "Ver más", noSubmissions: "Todavía no hay envíos.", testSubmission: "Envío de prueba",
     busy: "Guardando…", publishedNotice: "Web publicada.", unpublishedNotice: "Web despublicada. Puedes deshacer el cambio.",
     restoredNotice: "Cambio deshecho.", readFailed: "No se han podido leer los datos. Pulsa Actualizar para reintentar.",
     internal: "No se ha podido completar la operación. Comprueba el estado y vuelve a intentarlo.",
@@ -26,6 +26,7 @@ const dictionary = {
     invalid_package: "Revisa el contenido del paquete. Puede contener enlaces, rutas duplicadas o inválidas, o superar el tamaño admitido.",
     missing_index: "Incluye index.html en la raíz del paquete o en public/.",
     invalid_server: "Incluye el archivo Python indicado y public/index.html.",
+    invalid_contract: "Revisa la versión, el servidor y el formulario en website.json.",
     invalid_options: "Revisa el título y la opción de arranque.",
     invalid_registry: "No se puede leer el registro de webs. Se ha conservado el archivo original.",
     start_failed: "La web no ha respondido en su dirección local. Comprueba que el puerto esté libre y que el servidor pueda arrancar.",
@@ -42,14 +43,14 @@ const dictionary = {
     setup: "Publish a website", source: "Folder or ZIP", sourceHelp: "Copy the full path to the file or folder.",
     slug: "Identifier", title: "Title", slugHelp: "Use the same identifier to update a website.",
     runtime: "Bundled server", entry: "Python entry file",
-    entryHelp: "Enter a relative path if the package has a trusted server that accepts --port and --db. Leave it blank to let Mercator serve the files.",
+    entryHelp: "Mercator detects the server declared in website.json. You can also enter the relative path to a trusted Python entry file.",
     autostart: "Start Mercator with the Hub", publish: "Publish on this PC",
     live: "Published", unpublished: "Unpublished", unavailable: "Unavailable",
     enabled: "Mercator starts with the Hub.", disabled: "Mercator starts on demand.",
     paused: "Mercator startup with the Hub is paused.",
     hubUnavailable: "The Hub has not confirmed Mercator startup.",
     empty: "Your published websites appear here.", stop: "Unpublish", undo: "Undo",
-    inbox: "Form submissions", more: "Show more", noSubmissions: "There are no submissions yet.",
+    inbox: "Form submissions", more: "Show more", noSubmissions: "There are no submissions yet.", testSubmission: "Test submission",
     busy: "Saving…", publishedNotice: "Website published.", unpublishedNotice: "Website unpublished. You can undo this change.",
     restoredNotice: "Change undone.", readFailed: "Could not load the data. Select Refresh to retry.",
     internal: "Could not complete the operation. Check the state and try again.",
@@ -58,6 +59,7 @@ const dictionary = {
     invalid_package: "Check the package. It may contain links, duplicate or invalid paths, or exceed the size limit.",
     missing_index: "Include index.html at the package root or in public/.",
     invalid_server: "Include the specified Python entry file and public/index.html.",
+    invalid_contract: "Check the version, server and form in website.json.",
     invalid_options: "Check the title and startup option.",
     invalid_registry: "Could not read the website registry. The original file is preserved.",
     start_failed: "The website did not respond at its local address. Check the port is free and the server can start.",
@@ -189,9 +191,11 @@ function renderInbox() {
     const row = element("li", "", "submission-row");
     const heading = element("div", "", "site-heading");
     heading.append(element("strong", record.reference), element("span", record.created_at + " UTC", "website-muted"));
+    if (record.test) heading.append(element("span", words("testSubmission"), "site-state"));
     const fields = element("dl");
     Object.entries(record.fields).forEach(([key, value]) => {
-      fields.append(element("dt", Object.hasOwn(dictionary.en, key) ? words(key) : key), element("dd", value));
+      const shown = record.test && typeof value === "string" ? value.replace(/ \[mercator-test:[a-f0-9]{32}\]$/, "") : value;
+      fields.append(element("dt", Object.hasOwn(dictionary.en, key) ? words(key) : key), element("dd", shown));
     });
     row.append(heading, fields);
     return row;
